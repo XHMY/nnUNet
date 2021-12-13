@@ -37,4 +37,13 @@ def put_file_in_place():
 
 
 if __name__ == '__main__':
-    put_file_in_place()
+    # put_file_in_place()
+    DATASET_PATH = "/home/lvwei/project/MedicalSegmentation/data/LIDC-IDRI/Task555_LungNoduleSE/"
+    generate_dataset_json(DATASET_PATH + "dataset.json",
+                          DATASET_PATH + "imagesTr",
+                          DATASET_PATH + "imagesTs",
+                          ('CT'),
+                          {0: 'background', 1: 'nodule'},
+                          "Task555_LungNoduleSE",
+                          dataset_description="LIDC-IDRI SIEMENS"
+    )               
