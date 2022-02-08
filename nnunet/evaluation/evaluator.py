@@ -14,17 +14,19 @@
 
 
 import collections
+import hashlib
 import inspect
 import json
-import hashlib
+from collections import OrderedDict
 from datetime import datetime
 from multiprocessing.pool import Pool
+
+import SimpleITK as sitk
 import numpy as np
 import pandas as pd
-import SimpleITK as sitk
-from nnunet.evaluation.metrics import ConfusionMatrix, ALL_METRICS
 from batchgenerators.utilities.file_and_folder_operations import save_json, subfiles, join
-from collections import OrderedDict
+
+from nnunet.evaluation.metrics import ConfusionMatrix, ALL_METRICS
 
 
 class Evaluator:
@@ -453,7 +455,7 @@ def evaluate_folder(folder_with_gts: str, folder_with_predictions: str, labels: 
     """
     files_gt = subfiles(folder_with_gts, suffix=".nii.gz", join=False)
     files_pred = subfiles(folder_with_predictions, suffix=".nii.gz", join=False)
-    assert all([i in files_pred for i in files_gt]), "files missing in folder_with_predictions"
+    # assert all([i in files_pred for i in files_gt]), "files missing in folder_with_predictions"
     assert all([i in files_gt for i in files_pred]), "files missing in folder_with_gts"
     test_ref_pairs = [(join(folder_with_predictions, i), join(folder_with_gts, i)) for i in files_pred]
     res = aggregate_scores(test_ref_pairs, json_output_file=join(folder_with_predictions, "summary.json"),

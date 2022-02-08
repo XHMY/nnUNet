@@ -1,7 +1,10 @@
-from utils import generate_dataset_json
-from sklearn.model_selection import train_test_split
-import pandas as pd
 import os
+
+import pandas as pd
+from batchgenerators.utilities.file_and_folder_operations import *
+from sklearn.model_selection import train_test_split
+
+from utils import generate_dataset_json
 
 
 def make_link(cnt, row, tt):
@@ -26,7 +29,7 @@ def make_link(cnt, row, tt):
 def put_file_in_place():
     filedf = pd.read_csv("../data/LIDC-IDRI/LIDCIDRI_Available_GESE.csv")
     filedf = filedf[filedf["Manufacturer"] == "SIEMENS"]
-    traindf, testdf = train_test_split(filedf, test_size=0.2, random_state=0)
+    traindf, testdf = train_test_split(filedf, test_size=0.1, random_state=0)
     cnt = 1
     for idx, row in traindf.iterrows():
         make_link(cnt, row, "imagesTr")
@@ -36,14 +39,28 @@ def put_file_in_place():
         cnt += 1
 
 
-if __name__ == '__main__':
-    # put_file_in_place()
-    DATASET_PATH = "/home/lvwei/project/MedicalSegmentation/data/LIDC-IDRI/Task555_LungNoduleSE/"
+def gen_dataset_json():
+    DATASET_PATH = "/home/lvwei/project/MedicalSegmentation/data/nnUNet_raw/nnUNet_raw_data/Task555_LungNoduleSE/"
     generate_dataset_json(DATASET_PATH + "dataset.json",
                           DATASET_PATH + "imagesTr",
                           DATASET_PATH + "imagesTs",
-                          ('CT'),
+                          ('CT',),
                           {0: 'background', 1: 'nodule'},
                           "Task555_LungNoduleSE",
                           dataset_description="LIDC-IDRI SIEMENS"
-    )               
+                          )
+
+
+def gen_splits_final_pkl():
+    out_preprocessed = "/home/lvwei/project/MedicalSegmentation/data/nnUNet_preprocessed/Task555_LungNoduleSE"
+    splits = [{'train': ["LI_" + "0" * (3 - len(str(i))) + str(i) for i in range(1, 150)],
+               'val': ["LI_" + "0" * (3 - len(str(i))) + str(i) for i in range(150, 188)]}]
+    # print(splits)
+    save_pickle(splits, join(out_preprocessed, "splits_final.pkl"))
+
+
+if __name__ == '__main__':
+    # put_file_in_place()
+    # gen_dataset_json()
+    gen_splits_final_pkl()
+    pass

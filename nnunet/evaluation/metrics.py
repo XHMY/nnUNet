@@ -65,6 +65,9 @@ class ConfusionMatrix:
         if self.test is None or self.reference is None:
             raise ValueError("'test' and 'reference' must both be set to compute confusion matrix.")
 
+        if self.test.shape != self.reference.shape:
+            print("Image & Label shape not match, remove one slice of image")
+            self.test = self.test[:-1, :, :]
         assert_shape(self.test, self.reference)
 
         self.tp = int(((self.test != 0) * (self.reference != 0)).sum())

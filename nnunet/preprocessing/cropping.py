@@ -12,12 +12,14 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+import shutil
+from collections import OrderedDict
+from multiprocessing import Pool
+
 import SimpleITK as sitk
 import numpy as np
-import shutil
 from batchgenerators.utilities.file_and_folder_operations import *
-from multiprocessing import Pool
-from collections import OrderedDict
+from pandas import notnull
 
 
 def create_nonzero_mask(data):
@@ -89,6 +91,13 @@ def crop_to_nonzero(data, seg=None, nonzero_label=-1):
     :param nonzero_label: this will be written into the segmentation map
     :return:
     """
+
+    # print(data.shape, seg.shape)
+    # Image Shape != Label Shape (Something went wrong on transfer to nii)
+    if seg is notnull and (data.shape != seg.shape):
+        print("Image & Label shape not match, remove one slice of image")
+        data = data[:, :-1, :, :]
+
     nonzero_mask = create_nonzero_mask(data)
     bbox = get_bbox_from_mask(nonzero_mask, 0)
 
