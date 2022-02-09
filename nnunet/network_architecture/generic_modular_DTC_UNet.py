@@ -79,8 +79,7 @@ def get_default_network_config(dim=2, dropout_p=None, nonlin="LeakyReLU", norm_t
     return props
 
 
-
-class PlainConvUNetEncoder(nn.Module):
+class DTCUNetEncoder(nn.Module):
     def __init__(self, input_channels, base_num_features, num_blocks_per_stage, feat_map_mul_on_downscale,
                  pool_op_kernel_sizes, conv_kernel_sizes, props, default_return_skips=True,
                  max_num_features=480):
@@ -97,7 +96,7 @@ class PlainConvUNetEncoder(nn.Module):
         :param conv_kernel_sizes:
         :param props:
         """
-        super(PlainConvUNetEncoder, self).__init__()
+        super(DTCUNetEncoder, self).__init__()
 
         self.default_return_skips = default_return_skips
         self.props = props
@@ -182,10 +181,10 @@ class PlainConvUNetEncoder(nn.Module):
         return tmp * batch_size
 
 
-class PlainConvUNetDecoder(nn.Module):
+class DTCUNetDecoder(nn.Module):
     def __init__(self, previous, num_classes, num_blocks_per_stage=None, network_props=None, deep_supervision=False,
                  upscale_logits=False):
-        super(PlainConvUNetDecoder, self).__init__()
+        super(DTCUNetDecoder, self).__init__()
         self.num_classes = num_classes
         self.deep_supervision = deep_supervision
         """
@@ -280,7 +279,8 @@ class PlainConvUNetDecoder(nn.Module):
             if gt is not None:
                 tmp = loss(tmp, gt)
             seg_outputs.append(tmp)
-            return seg_outputs[::-1]  # seg_outputs are ordered so that the seg from the highest layer is first, the seg from
+            return seg_outputs[
+                   ::-1]  # seg_outputs are ordered so that the seg from the highest layer is first, the seg from
             # the bottleneck of the UNet last
         else:
             return segmentation
@@ -302,36 +302,37 @@ class PlainConvUNetDecoder(nn.Module):
         npool = len(pool_op_kernel_sizes) - 1
 
         current_shape = np.array(patch_size)
-        tmp = (num_blocks_per_stage_decoder[-1] + 1) * np.prod(current_shape) * base_num_features + num_classes * np.prod(current_shape)
+        tmp = (num_blocks_per_stage_decoder[-1] + 1) * np.prod(
+            current_shape) * base_num_features + num_classes * np.prod(current_shape)
 
         num_feat = base_num_features
 
         for p in range(1, npool):
             current_shape = current_shape / np.array(pool_op_kernel_sizes[p])
             num_feat = min(num_feat * feat_map_mul_on_downscale, max_num_features)
-            num_convs = num_blocks_per_stage_decoder[-(p+1)] + 1
+            num_convs = num_blocks_per_stage_decoder[-(p + 1)] + 1
             print(p, num_feat, num_convs, current_shape)
             tmp += num_convs * np.prod(current_shape) * num_feat
 
         return tmp * batch_size
 
 
-class PlainConvUNet(SegmentationNetwork):
+class DTCUNet(SegmentationNetwork):
     use_this_for_batch_size_computation_2D = 1167982592.0
     use_this_for_batch_size_computation_3D = 1152286720.0
 
     def __init__(self, input_channels, base_num_features, num_blocks_per_stage_encoder, feat_map_mul_on_downscale,
                  pool_op_kernel_sizes, conv_kernel_sizes, props, num_classes, num_blocks_per_stage_decoder,
                  deep_supervision=False, upscale_logits=False, max_features=512, initializer=None):
-        super(PlainConvUNet, self).__init__()
+        super(DTCUNet, self).__init__()
         self.conv_op = props['conv_op']
         self.num_classes = num_classes
 
-        self.encoder = PlainConvUNetEncoder(input_channels, base_num_features, num_blocks_per_stage_encoder,
-                                            feat_map_mul_on_downscale, pool_op_kernel_sizes, conv_kernel_sizes,
-                                            props, default_return_skips=True, max_num_features=max_features)
-        self.decoder = PlainConvUNetDecoder(self.encoder, num_classes, num_blocks_per_stage_decoder, props,
-                                            deep_supervision, upscale_logits)
+        self.encoder = DTCUNetEncoder(input_channels, base_num_features, num_blocks_per_stage_encoder,
+                                      feat_map_mul_on_downscale, pool_op_kernel_sizes, conv_kernel_sizes,
+                                      props, default_return_skips=True, max_num_features=max_features)
+        self.decoder = DTCUNetDecoder(self.encoder, num_classes, num_blocks_per_stage_decoder, props,
+                                      deep_supervision, upscale_logits)
         if initializer is not None:
             self.apply(initializer)
 
@@ -343,14 +344,14 @@ class PlainConvUNet(SegmentationNetwork):
     def compute_approx_vram_consumption(patch_size, base_num_features, max_num_features,
                                         num_modalities, num_classes, pool_op_kernel_sizes, num_blocks_per_stage_encoder,
                                         num_blocks_per_stage_decoder, feat_map_mul_on_downscale, batch_size):
-        enc = PlainConvUNetEncoder.compute_approx_vram_consumption(patch_size, base_num_features, max_num_features,
-                                                                   num_modalities, pool_op_kernel_sizes,
-                                                                   num_blocks_per_stage_encoder,
-                                                                   feat_map_mul_on_downscale, batch_size)
-        dec = PlainConvUNetDecoder.compute_approx_vram_consumption(patch_size, base_num_features, max_num_features,
-                                                                   num_classes, pool_op_kernel_sizes,
-                                                                   num_blocks_per_stage_decoder,
-                                                                   feat_map_mul_on_downscale, batch_size)
+        enc = DTCUNetEncoder.compute_approx_vram_consumption(patch_size, base_num_features, max_num_features,
+                                                             num_modalities, pool_op_kernel_sizes,
+                                                             num_blocks_per_stage_encoder,
+                                                             feat_map_mul_on_downscale, batch_size)
+        dec = DTCUNetDecoder.compute_approx_vram_consumption(patch_size, base_num_features, max_num_features,
+                                                             num_classes, pool_op_kernel_sizes,
+                                                             num_blocks_per_stage_decoder,
+                                                             feat_map_mul_on_downscale, batch_size)
 
         return enc + dec
 
@@ -358,34 +359,34 @@ class PlainConvUNet(SegmentationNetwork):
     def compute_reference_for_vram_consumption_3d():
         patch_size = (160, 128, 128)
         pool_op_kernel_sizes = ((1, 1, 1),
-                            (2, 2, 2),
-                            (2, 2, 2),
-                            (2, 2, 2),
-                            (2, 2, 2),
-                            (2, 2, 2))
+                                (2, 2, 2),
+                                (2, 2, 2),
+                                (2, 2, 2),
+                                (2, 2, 2),
+                                (2, 2, 2))
         conv_per_stage_encoder = (2, 2, 2, 2, 2, 2)
         conv_per_stage_decoder = (2, 2, 2, 2, 2)
 
-        return PlainConvUNet.compute_approx_vram_consumption(patch_size, 32, 512, 4, 3, pool_op_kernel_sizes,
-                                                             conv_per_stage_encoder, conv_per_stage_decoder, 2, 2)
+        return DTCUNet.compute_approx_vram_consumption(patch_size, 32, 512, 4, 3, pool_op_kernel_sizes,
+                                                       conv_per_stage_encoder, conv_per_stage_decoder, 2, 2)
 
     @staticmethod
     def compute_reference_for_vram_consumption_2d():
         patch_size = (256, 256)
         pool_op_kernel_sizes = (
-            (1, 1), # (256, 256)
-            (2, 2), # (128, 128)
-            (2, 2), # (64, 64)
-            (2, 2), # (32, 32)
-            (2, 2), # (16, 16)
-            (2, 2), # (8, 8)
+            (1, 1),  # (256, 256)
+            (2, 2),  # (128, 128)
+            (2, 2),  # (64, 64)
+            (2, 2),  # (32, 32)
+            (2, 2),  # (16, 16)
+            (2, 2),  # (8, 8)
             (2, 2)  # (4, 4)
         )
         conv_per_stage_encoder = (2, 2, 2, 2, 2, 2, 2)
         conv_per_stage_decoder = (2, 2, 2, 2, 2, 2)
 
-        return PlainConvUNet.compute_approx_vram_consumption(patch_size, 32, 512, 4, 3, pool_op_kernel_sizes,
-                                                             conv_per_stage_encoder, conv_per_stage_decoder, 2, 56)
+        return DTCUNet.compute_approx_vram_consumption(patch_size, 32, 512, 4, 3, pool_op_kernel_sizes,
+                                                       conv_per_stage_encoder, conv_per_stage_decoder, 2, 56)
 
 
 if __name__ == "__main__":
@@ -405,8 +406,9 @@ if __name__ == "__main__":
                             (2, 2))
     patch_size = (256, 256)
     batch_size = 56
-    unet = PlainConvUNet(4, 32, (2, 2, 2, 2, 2, 2, 2), 2, pool_op_kernel_sizes, conv_op_kernel_sizes,
-                         get_default_network_config(2, dropout_p=None), 4, (2, 2, 2, 2, 2, 2), False, False, max_features=512).cuda()
+    unet = DTCUNet(4, 32, (2, 2, 2, 2, 2, 2, 2), 2, pool_op_kernel_sizes, conv_op_kernel_sizes,
+                   get_default_network_config(2, dropout_p=None), 4, (2, 2, 2, 2, 2, 2), False, False,
+                   max_features=512).cuda()
     optimizer = SGD(unet.parameters(), lr=0.1, momentum=0.95)
 
     unet.compute_reference_for_vram_consumption_3d()
@@ -427,6 +429,7 @@ if __name__ == "__main__":
     optimizer.step()
 
     import hiddenlayer as hl
+
     g = hl.build_graph(unet, dummy_input)
     g.save("/home/lvwei/project/MedicalSegmentation/nnUNet/test.pdf")
 
