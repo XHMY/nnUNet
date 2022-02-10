@@ -21,6 +21,7 @@ from torch.optim import SGD
 from nnunet.network_architecture.custom_modules.conv_blocks import StackedConvLayers
 from nnunet.network_architecture.generic_UNet import Upsample
 from nnunet.network_architecture.neural_network import SegmentationNetwork
+from nnunet.training.loss_functions.deep_supervision import MultipleOutputLoss2
 from nnunet.training.loss_functions.dice_loss import DC_and_CE_loss
 
 """
@@ -248,6 +249,8 @@ class DTCUNetDecoder(nn.Module):
                     self.deep_supervision_outputs.append(seg_layer)
 
         self.segmentation_output = self.props['conv_op'](features_skip, num_classes, 1, 1, 0, 1, 1, False)
+        self.tanh = nn.Tanh()
+        self.regression_output = self.props['conv_op'](features_skip, num_classes, 1, 1, 0, 1, 1, False)
 
         self.tus = nn.ModuleList(self.tus)
         self.stages = nn.ModuleList(self.stages)
@@ -273,17 +276,18 @@ class DTCUNetDecoder(nn.Module):
                 seg_outputs.append(tmp)
 
         segmentation = self.segmentation_output(x)
+        regression = self.tanh(self.regression_output(x))
 
         if self.deep_supervision:
             tmp = segmentation
             if gt is not None:
                 tmp = loss(tmp, gt)
             seg_outputs.append(tmp)
-            return seg_outputs[
-                   ::-1]  # seg_outputs are ordered so that the seg from the highest layer is first, the seg from
-            # the bottleneck of the UNet last
+            return regression, seg_outputs[::-1]
+            # seg_outputs are ordered so that the seg from the highest layer is first,
+            # the seg from the bottleneck of the UNet last
         else:
-            return segmentation
+            return regression, segmentation
 
     @staticmethod
     def compute_approx_vram_consumption(patch_size, base_num_features, max_num_features,
@@ -407,7 +411,7 @@ if __name__ == "__main__":
     patch_size = (256, 256)
     batch_size = 56
     unet = DTCUNet(4, 32, (2, 2, 2, 2, 2, 2, 2), 2, pool_op_kernel_sizes, conv_op_kernel_sizes,
-                   get_default_network_config(2, dropout_p=None), 4, (2, 2, 2, 2, 2, 2), False, False,
+                   get_default_network_config(2, dropout_p=None), 4, (2, 2, 2, 2, 2, 2), True, False,
                    max_features=512).cuda()
     optimizer = SGD(unet.parameters(), lr=0.1, momentum=0.95)
 
@@ -418,11 +422,11 @@ if __name__ == "__main__":
     dummy_gt = (torch.rand((batch_size, 1, *patch_size)) * 4).round().clamp_(0, 3).cuda().long()
 
     optimizer.zero_grad()
-    skips = unet.encoder(dummy_input)
-    print([i.shape for i in skips])
-    loss = DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {})
-    output = unet.decoder(skips)
-
+    # loss = DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {})
+    loss = MultipleOutputLoss2(DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {}))
+    output = unet(dummy_input)
+    print(output[0].shape, output[1].shape, '->', dummy_gt.shape)
+    exit(0)
     l = loss(output, dummy_gt)
     l.backward()
 
