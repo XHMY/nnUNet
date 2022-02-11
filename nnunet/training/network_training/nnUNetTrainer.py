@@ -17,7 +17,7 @@ import shutil
 from collections import OrderedDict
 from multiprocessing import Pool
 from time import sleep
-from typing import Tuple, List
+from typing import Tuple
 
 import matplotlib
 import numpy as np
@@ -364,6 +364,7 @@ class nnUNetTrainer(NetworkTrainer):
         self.base_num_features = plans['base_num_features']
         self.num_input_channels = plans['num_modalities']
         self.num_classes = plans['num_classes'] + 1  # background is no longer in num_classes
+        # self.num_classes = plans['num_classes']  # fuck background
         self.classes = plans['all_classes']
         self.use_mask_for_norm = plans['use_mask_for_norm']
         self.only_keep_largest_connected_component = plans['keep_only_largest_region']

@@ -283,6 +283,13 @@ class DTCUNetDecoder(nn.Module):
             if gt is not None:
                 tmp = loss(tmp, gt)
             seg_outputs.append(tmp)
+
+            # print("Network Said:",
+            #       "\nregression output shape:", regression.shape,
+            #       "\nseg_outputs output length:", len(seg_outputs))
+            # for seg_outputs_i, seg_outputs_c in enumerate(seg_outputs):
+            #     print("Shape of seg_outputs[" + str(seg_outputs_i) + "]:", seg_outputs_c.shape)
+
             return regression, seg_outputs[::-1]
             # seg_outputs are ordered so that the seg from the highest layer is first,
             # the seg from the bottleneck of the UNet last
@@ -411,7 +418,7 @@ if __name__ == "__main__":
     patch_size = (256, 256)
     batch_size = 56
     unet = DTCUNet(4, 32, (2, 2, 2, 2, 2, 2, 2), 2, pool_op_kernel_sizes, conv_op_kernel_sizes,
-                   get_default_network_config(2, dropout_p=None), 4, (2, 2, 2, 2, 2, 2), True, False,
+                   get_default_network_config(2, dropout_p=None), 4, (2, 2, 2, 2, 2, 2), False, False,
                    max_features=512).cuda()
     optimizer = SGD(unet.parameters(), lr=0.1, momentum=0.95)
 
@@ -425,7 +432,10 @@ if __name__ == "__main__":
     # loss = DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {})
     loss = MultipleOutputLoss2(DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {}))
     output = unet(dummy_input)
-    print(output[0].shape, output[1].shape, '->', dummy_gt.shape)
+    print("output[0].shape:", output[0].shape)
+    print("output[1].shape:", output[1].shape)
+    # for yi, yc in enumerate(output[1]):
+    #     print("Shape of output[1][" + str(yi) + "]:", yc.shape)
     exit(0)
     l = loss(output, dummy_gt)
     l.backward()

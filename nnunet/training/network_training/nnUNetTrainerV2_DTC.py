@@ -14,15 +14,19 @@
 
 
 import numpy as np
+import torch
 from batchgenerators.utilities.file_and_folder_operations import *
 from torch import nn
 
-from nnUNetTrainerV2 import nnUNetTrainerV2
+from nnunet.network_architecture.generic_modular_DTC_UNet import DTCUNet, get_default_network_config
+from nnunet.network_architecture.initialization import InitWeights_He
 from nnunet.network_architecture.neural_network import SegmentationNetwork
 from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
 from nnunet.training.data_augmentation.level_set import LevelSetTransform
 from nnunet.training.dataloading.dataset_loading import unpack_dataset
 from nnunet.training.loss_functions.deep_supervision_DTC import DTCLoss_DTC
+from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
+from nnunet.utilities.nd_softmax import softmax_helper
 
 
 class nnUNetTrainerV2DTC(nnUNetTrainerV2):
@@ -56,6 +60,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
             self.setup_DA_params()
 
             ################# Here we wrap the loss for deep supervision ############
+
             # we need to know the number of outputs of the network
             net_numpool = len(self.net_num_pool_op_kernel_sizes)
 
@@ -110,6 +115,34 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
             self.print_to_log_file('self.was_initialized is True, not running self.initialize again')
         self.was_initialized = True
 
+    def initialize_network(self):
+        if self.threeD:
+            cfg = get_default_network_config(3, None, norm_type="in")
+
+        else:
+            cfg = get_default_network_config(1, None, norm_type="in")
+
+        stage_plans = self.plans['plans_per_stage'][self.stage]
+        conv_kernel_sizes = stage_plans['conv_kernel_sizes']
+        blocks_per_stage_encoder = stage_plans['num_blocks_encoder']
+        blocks_per_stage_decoder = stage_plans['num_blocks_decoder']
+        pool_op_kernel_sizes = stage_plans['pool_op_kernel_sizes']
+
+        self.network = DTCUNet(self.num_input_channels, self.base_num_features, blocks_per_stage_encoder, 2,
+                               pool_op_kernel_sizes, conv_kernel_sizes, cfg, self.num_classes,
+                               blocks_per_stage_decoder, True, False, 320, InitWeights_He(1e-2))
+        if torch.cuda.is_available():
+            self.network.cuda()
+        self.network.inference_apply_nonlin = softmax_helper
+
+    def setup_DA_params(self):
+        """
+        net_num_pool_op_kernel_sizes is different in resunet
+        """
+        super().setup_DA_params()
+        self.deep_supervision_scales = [[1, 1, 1]] + list(list(i) for i in 1 / np.cumprod(
+            np.vstack(self.net_num_pool_op_kernel_sizes[1:]), axis=0))[:-1]
+
     def run_online_evaluation(self, output, target):
         """
         due to deep supervision the return value and the reference are now lists of tensors. We only need the full
@@ -118,6 +151,28 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         :param target:
         :return:
         """
-        target = target[1][0]
-        output = output[1][0]
+        target = target[1]
+        output = output[1]
         return super().run_online_evaluation(output, target)
+
+    def on_epoch_end(self):
+        """
+        overwrite patient-based early stopping. Always run to 1000 epochs
+        :return:
+        """
+        super().on_epoch_end()
+        continue_training = self.epoch < self.max_num_epochs
+
+        self.loss.cur_epochs = self.epoch
+
+        # it can rarely happen that the momentum of nnUNetTrainerV2 is too high for some dataset. If at epoch 100 the
+        # estimated validation Dice is still 0 then we reduce the momentum from 0.99 to 0.95
+        if self.epoch == 100:
+            if self.all_val_eval_metrics[-1] == 0:
+                self.optimizer.param_groups[0]["momentum"] = 0.95
+                self.network.apply(InitWeights_He(1e-2))
+                self.print_to_log_file("At epoch 100, the mean foreground Dice was 0. This can be caused by a too "
+                                       "high momentum. High momentum (0.99) is good for datasets where it works, but "
+                                       "sometimes causes issues such as this one. Momentum has now been reduced to "
+                                       "0.95 and network weights have been reinitialized")
+        return continue_training

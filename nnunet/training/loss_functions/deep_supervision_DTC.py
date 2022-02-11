@@ -32,6 +32,7 @@ class DTCLoss_DTC(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.consistency = consistency
         self.consistency_rampup = consistency_rampup
+        self.cur_epochs = 0
 
     def get_current_consistency_weight(self, epoch):
         # Consistency ramp-up from https://arxiv.org/abs/1610.02242
@@ -47,8 +48,10 @@ class DTCLoss_DTC(nn.Module):
         return self.consistency * sigmoid_rampup(epoch, self.consistency_rampup)
 
     def seg_deep_super_loss(self, x, y):
-        assert isinstance(x, (tuple, list)), "x must be either tuple or list"
-        assert isinstance(y, (tuple, list)), "y must be either tuple or list"
+        assert isinstance(x, (tuple, list)), "x must be either tuple or list. But got type " \
+                                             + str(type(x)) + " shape " + str(x.shape)
+        assert isinstance(y, (tuple, list)), "y must be either tuple or list" \
+                                             + str(type(y)) + " shape " + str(y.shape)
 
         if self.weight_factors is None:
             weights = [1] * len(x)
@@ -65,15 +68,22 @@ class DTCLoss_DTC(nn.Module):
         return self.mse_loss(x, y)
 
     def dtc_loss(self, x, y):
-        return self.mse_loss(torch.sigmod(-1500 * x), y)
+        return self.mse_loss(torch.sigmoid(-1500 * x), y)
 
-    def forward(self, x, y, epochs):
+    def forward(self, x, y):
         """
         param x: x[0] is regression output, x[1] is segmentation output in different layer
         """
+        # print("Length of x,y:", len(x), len(y))
+        # for xi, xc in enumerate(x[1]):
+        #     print("Shape of x[1][" + str(xi) + "]:", xc.shape)
+        # for yi, yc in enumerate(y[1]):
+        #     print("Shape of y[1][" + str(yi) + "]:", yc.shape)
+        #     print("Sum:", torch.sum(yc))
+
         supervise_loss = self.seg_deep_super_loss(x[1], y[1]) + 0.3 * self.lsf_loss(x[0], y[0])
         unsupervised_loss = self.dtc_loss(x[1][0], x[0])
-        consistency_weight = self.get_current_consistency_weight(epochs)
+        consistency_weight = self.get_current_consistency_weight(self.cur_epochs)
         return supervise_loss + unsupervised_loss * consistency_weight
 
 

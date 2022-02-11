@@ -18,22 +18,23 @@ from typing import Tuple
 
 import numpy as np
 import torch
-from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
-from nnunet.training.loss_functions.deep_supervision import MultipleOutputLoss2
-from nnunet.utilities.to_torch import maybe_to_torch, to_cuda
-from nnunet.network_architecture.generic_UNet import Generic_UNet
-from nnunet.network_architecture.initialization import InitWeights_He
-from nnunet.network_architecture.neural_network import SegmentationNetwork
-from nnunet.training.data_augmentation.default_data_augmentation import default_2D_augmentation_params, \
-    get_patch_size, default_3D_augmentation_params
-from nnunet.training.dataloading.dataset_loading import unpack_dataset
-from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
-from nnunet.utilities.nd_softmax import softmax_helper
+from batchgenerators.utilities.file_and_folder_operations import *
 from sklearn.model_selection import KFold
 from torch import nn
 from torch.cuda.amp import autocast
+
+from nnunet.network_architecture.generic_UNet import Generic_UNet
+from nnunet.network_architecture.initialization import InitWeights_He
+from nnunet.network_architecture.neural_network import SegmentationNetwork
+from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
+from nnunet.training.data_augmentation.default_data_augmentation import default_2D_augmentation_params, \
+    get_patch_size, default_3D_augmentation_params
+from nnunet.training.dataloading.dataset_loading import unpack_dataset
 from nnunet.training.learning_rate.poly_lr import poly_lr
-from batchgenerators.utilities.file_and_folder_operations import *
+from nnunet.training.loss_functions.deep_supervision import MultipleOutputLoss2
+from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
+from nnunet.utilities.nd_softmax import softmax_helper
+from nnunet.utilities.to_torch import maybe_to_torch, to_cuda
 
 
 class nnUNetTrainerV2(nnUNetTrainer):
@@ -236,6 +237,12 @@ class nnUNetTrainerV2(nnUNetTrainer):
         data = maybe_to_torch(data)
         target = maybe_to_torch(target)
 
+        # print("data.shape:", data.shape)
+        # print("target length:", len(target))
+        # print("target[0].shape", target[0].shape)
+        # for yi, yc in enumerate(target[1]):
+        #     print("Shape of y[1][" + str(yi) + "]:", yc.shape)
+
         if torch.cuda.is_available():
             data = to_cuda(data)
             target = to_cuda(target)
@@ -435,8 +442,8 @@ class nnUNetTrainerV2(nnUNetTrainer):
         """
         self.maybe_update_lr(self.epoch)  # if we dont overwrite epoch then self.epoch+1 is used which is not what we
         # want at the start of the training
-        ds = self.network.do_ds
-        self.network.do_ds = True
+        # ds = self.network.do_ds
+        # self.network.do_ds = True
         ret = super().run_training()
-        self.network.do_ds = ds
+        # self.network.do_ds = ds
         return ret
