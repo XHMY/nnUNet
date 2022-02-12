@@ -11,7 +11,7 @@
 #    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
-
+from typing import Tuple
 
 import numpy as np
 import torch
@@ -25,6 +25,7 @@ from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreD
 from nnunet.training.data_augmentation.level_set import LevelSetTransform
 from nnunet.training.dataloading.dataset_loading import unpack_dataset
 from nnunet.training.loss_functions.deep_supervision_DTC import DTCLoss_DTC
+from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
 from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
 from nnunet.utilities.nd_softmax import softmax_helper
 
@@ -156,23 +157,38 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         return super().run_online_evaluation(output, target)
 
     def on_epoch_end(self):
-        """
-        overwrite patient-based early stopping. Always run to 1000 epochs
-        :return:
-        """
-        super().on_epoch_end()
-        continue_training = self.epoch < self.max_num_epochs
-
         self.loss.cur_epochs = self.epoch
+        return super().on_epoch_end()
 
-        # it can rarely happen that the momentum of nnUNetTrainerV2 is too high for some dataset. If at epoch 100 the
-        # estimated validation Dice is still 0 then we reduce the momentum from 0.99 to 0.95
-        if self.epoch == 100:
-            if self.all_val_eval_metrics[-1] == 0:
-                self.optimizer.param_groups[0]["momentum"] = 0.95
-                self.network.apply(InitWeights_He(1e-2))
-                self.print_to_log_file("At epoch 100, the mean foreground Dice was 0. This can be caused by a too "
-                                       "high momentum. High momentum (0.99) is good for datasets where it works, but "
-                                       "sometimes causes issues such as this one. Momentum has now been reduced to "
-                                       "0.95 and network weights have been reinitialized")
-        return continue_training
+    def predict_preprocessed_data_return_seg_and_softmax(self, data: np.ndarray, do_mirroring: bool = True,
+                                                         mirror_axes: Tuple[int] = None,
+                                                         use_sliding_window: bool = True, step_size: float = 0.5,
+                                                         use_gaussian: bool = True, pad_border_mode: str = 'constant',
+                                                         pad_kwargs: dict = None, all_in_gpu: bool = False,
+                                                         verbose: bool = True, mixed_precision=True) -> Tuple[
+        np.ndarray, np.ndarray]:
+        ds = self.network.decoder.deep_supervision
+        self.network.decoder.deep_supervision = False
+        self.network.decoder.compute_level_set_regression = False
+        ret = nnUNetTrainer.predict_preprocessed_data_return_seg_and_softmax(self, data, do_mirroring=do_mirroring,
+                                                                             mirror_axes=mirror_axes,
+                                                                             use_sliding_window=use_sliding_window,
+                                                                             step_size=step_size,
+                                                                             use_gaussian=use_gaussian,
+                                                                             pad_border_mode=pad_border_mode,
+                                                                             pad_kwargs=pad_kwargs,
+                                                                             all_in_gpu=all_in_gpu,
+                                                                             verbose=verbose,
+                                                                             mixed_precision=mixed_precision)
+        self.network.decoder.deep_supervision = ds
+        self.network.decoder.compute_level_set_regression = True
+        return ret
+
+    def run_training(self):
+        self.maybe_update_lr(self.epoch)  # if we dont overwrite epoch then self.epoch+1 is used which is not what we
+        # want at the start of the training
+        ds = self.network.decoder.deep_supervision
+        self.network.decoder.deep_supervision = True
+        ret = nnUNetTrainer.run_training(self)
+        self.network.decoder.deep_supervision = ds
+        return ret

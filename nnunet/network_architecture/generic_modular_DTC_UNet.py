@@ -184,10 +184,11 @@ class DTCUNetEncoder(nn.Module):
 
 class DTCUNetDecoder(nn.Module):
     def __init__(self, previous, num_classes, num_blocks_per_stage=None, network_props=None, deep_supervision=False,
-                 upscale_logits=False):
+                 upscale_logits=False, compute_level_set_regression=True):
         super(DTCUNetDecoder, self).__init__()
         self.num_classes = num_classes
         self.deep_supervision = deep_supervision
+        self.compute_level_set_regression = compute_level_set_regression
         """
         We assume the bottleneck is part of the encoder, so we can start with upsample -> concat here
         """
@@ -276,7 +277,9 @@ class DTCUNetDecoder(nn.Module):
                 seg_outputs.append(tmp)
 
         segmentation = self.segmentation_output(x)
-        regression = self.tanh(self.regression_output(x))
+
+        if self.compute_level_set_regression:
+            regression = self.tanh(self.regression_output(x))
 
         if self.deep_supervision:
             tmp = segmentation
@@ -290,11 +293,11 @@ class DTCUNetDecoder(nn.Module):
             # for seg_outputs_i, seg_outputs_c in enumerate(seg_outputs):
             #     print("Shape of seg_outputs[" + str(seg_outputs_i) + "]:", seg_outputs_c.shape)
 
-            return regression, seg_outputs[::-1]
+            return regression, seg_outputs[::-1] if self.compute_level_set_regression else seg_outputs[::-1]
             # seg_outputs are ordered so that the seg from the highest layer is first,
             # the seg from the bottleneck of the UNet last
         else:
-            return regression, segmentation
+            return regression, segmentation if self.compute_level_set_regression else segmentation
 
     @staticmethod
     def compute_approx_vram_consumption(patch_size, base_num_features, max_num_features,
