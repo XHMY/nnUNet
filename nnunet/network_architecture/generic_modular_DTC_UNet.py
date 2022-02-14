@@ -293,11 +293,11 @@ class DTCUNetDecoder(nn.Module):
             # for seg_outputs_i, seg_outputs_c in enumerate(seg_outputs):
             #     print("Shape of seg_outputs[" + str(seg_outputs_i) + "]:", seg_outputs_c.shape)
 
-            return regression, seg_outputs[::-1] if self.compute_level_set_regression else seg_outputs[::-1]
+            return (regression, seg_outputs[::-1]) if self.compute_level_set_regression else seg_outputs[::-1]
             # seg_outputs are ordered so that the seg from the highest layer is first,
             # the seg from the bottleneck of the UNet last
         else:
-            return regression, segmentation if self.compute_level_set_regression else segmentation
+            return (regression, segmentation) if self.compute_level_set_regression else segmentation
 
     @staticmethod
     def compute_approx_vram_consumption(patch_size, base_num_features, max_num_features,

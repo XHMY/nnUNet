@@ -192,3 +192,22 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         ret = nnUNetTrainer.run_training(self)
         self.network.decoder.deep_supervision = ds
         return ret
+
+    def validate(self, do_mirroring: bool = True, use_sliding_window: bool = True,
+                 step_size: float = 0.5, save_softmax: bool = True, use_gaussian: bool = True, overwrite: bool = True,
+                 validation_folder_name: str = 'validation_raw', debug: bool = False, all_in_gpu: bool = False,
+                 segmentation_export_kwargs: dict = None, run_postprocessing_on_folds: bool = True):
+        """
+        We need to wrap this because we need to enforce self.network.do_ds = False for prediction
+        """
+        ds = self.network.decoder.deep_supervision
+        self.network.decoder.deep_supervision = False
+        ret = nnUNetTrainer.validate(self, do_mirroring=do_mirroring, use_sliding_window=use_sliding_window,
+                                     step_size=step_size,
+                                     save_softmax=save_softmax, use_gaussian=use_gaussian,
+                                     overwrite=overwrite, validation_folder_name=validation_folder_name, debug=debug,
+                                     all_in_gpu=all_in_gpu, segmentation_export_kwargs=segmentation_export_kwargs,
+                                     run_postprocessing_on_folds=run_postprocessing_on_folds)
+
+        self.network.decoder.deep_supervision = ds
+        return ret
