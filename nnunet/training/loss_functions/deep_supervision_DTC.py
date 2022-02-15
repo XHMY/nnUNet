@@ -19,7 +19,7 @@ from torch import nn
 
 
 class DTCLoss_DTC(nn.Module):
-    def __init__(self, seg_loss, weight_factors=None, consistency=1.0, consistency_rampup=40.0):
+    def __init__(self, seg_loss, weight_factors=None, consistency=1.0, consistency_rampup=40.0, is_unsupervised=False):
         """
         use this if you have several outputs and ground truth (both list of same len) and the loss should be computed
         between them (x[0] and y[0], x[1] and y[1] etc)
@@ -33,6 +33,7 @@ class DTCLoss_DTC(nn.Module):
         self.consistency = consistency
         self.consistency_rampup = consistency_rampup
         self.cur_epochs = 0
+        self.is_unsupervised = is_unsupervised
 
     def get_current_consistency_weight(self, epoch):
         # Consistency ramp-up from https://arxiv.org/abs/1610.02242
@@ -82,7 +83,8 @@ class DTCLoss_DTC(nn.Module):
         #     print("Sum:", torch.sum(yc))
 
         unsupervised_loss = self.dtc_loss(x[1][0], x[0])
-        if y is None:
+        if self.is_unsupervised:
+            print("This is a unsupervised training.")
             return unsupervised_loss
         supervise_loss = self.seg_deep_super_loss(x[1], y[1]) + 0.3 * self.lsf_loss(x[0], y[0])
         consistency_weight = self.get_current_consistency_weight(self.cur_epochs)
