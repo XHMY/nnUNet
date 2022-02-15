@@ -81,8 +81,10 @@ class DTCLoss_DTC(nn.Module):
         #     print("Shape of y[1][" + str(yi) + "]:", yc.shape)
         #     print("Sum:", torch.sum(yc))
 
-        supervise_loss = self.seg_deep_super_loss(x[1], y[1]) + 0.3 * self.lsf_loss(x[0], y[0])
         unsupervised_loss = self.dtc_loss(x[1][0], x[0])
+        if y is None:
+            return unsupervised_loss
+        supervise_loss = self.seg_deep_super_loss(x[1], y[1]) + 0.3 * self.lsf_loss(x[0], y[0])
         consistency_weight = self.get_current_consistency_weight(self.cur_epochs)
         return supervise_loss + unsupervised_loss * consistency_weight
 
