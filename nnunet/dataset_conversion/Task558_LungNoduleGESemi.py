@@ -28,10 +28,12 @@ def put_file_in_place():
     file_df = pd.read_csv(os.path.join(
         dataset_path[:-13], "LIDCIDRI_Available_GESE.csv"))
     file_df = file_df[file_df["Manufacturer"] == "GE MEDICAL SYSTEMS"]
-    nodule_cnt_df = pd.read_excel(os.path.join(dataset_path[:-13], "ORI_meta/lidc-idri nodule counts (6-23-2015).xlsx"))[
-        ["Number of Nodules >=3mm**", "TCIA Patent ID"]].dropna()
+    nodule_cnt_df = \
+        pd.read_excel(os.path.join(dataset_path[:-13], "ORI_meta/lidc-idri nodule counts (6-23-2015).xlsx"))[
+            ["Number of Nodules >=3mm**", "TCIA Patent ID"]].dropna()
     file_df = pd.merge(file_df, nodule_cnt_df, left_on="Subject ID", right_on="TCIA Patent ID", how="left")
-    file_df = file_df[file_df["Number of Nodules >=3mm**"] > 1].sample(n=50, random_state=123).reset_index(drop=True)
+    file_df = file_df[file_df["Number of Nodules >=3mm**"] > 1].reset_index(drop=True)
+    # .sample(n=50, random_state=123)
 
     try:
         os.makedirs(os.path.join(raw_data_path, dataset_name))
@@ -61,8 +63,6 @@ def gen_dataset_json():
                           dataset_name,
                           dataset_description="LIDC-IDRI GE MEDICAL SYSTEMS Test for Semi-supervised learning"
                           )
-
-
 
 
 if __name__ == '__main__':

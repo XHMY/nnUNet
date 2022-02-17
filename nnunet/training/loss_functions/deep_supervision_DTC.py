@@ -84,7 +84,6 @@ class DTCLoss_DTC(nn.Module):
 
         unsupervised_loss = self.dtc_loss(x[1][0], x[0])
         if self.is_unsupervised:
-            print("This is a unsupervised training.")
             return unsupervised_loss
         supervise_loss = self.seg_deep_super_loss(x[1], y[1]) + 0.3 * self.lsf_loss(x[0], y[0])
         consistency_weight = self.get_current_consistency_weight(self.cur_epochs)
