@@ -763,4 +763,4 @@ class NetworkTrainer(object):
             print("############################################### Done")                                                            
             self.network.load_state_dict(model_dict)                            
         else:                                                                   
-            print('############################################### Training from scratch')```
+            print('############################################### Training from scratch')
