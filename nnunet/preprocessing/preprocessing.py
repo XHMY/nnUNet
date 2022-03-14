@@ -375,7 +375,7 @@ class GenericPreprocessor(object):
         if not isinstance(num_threads, (list, tuple, np.ndarray)):
             num_threads = [num_threads] * num_stages
 
-        assert len(num_threads) == num_stages
+        assert len(num_threads) == num_stages, f"num_threads ({len(num_threads)}) must be num_stages ({num_stages})"
 
         # we need to know which classes are present in this dataset so that we can precompute where these classes are
         # located. This is needed for oversampling foreground
