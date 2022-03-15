@@ -203,7 +203,7 @@ def main():
                          overwrite=args.val_disable_overwrite)
 
         if not validation_only:
-            with open(os.path.join(output_folder_name, val_folder, "summary.json"), "r") as f:
+            with open(os.path.join(trainer.output_folder, val_folder, "summary.json"), "r") as f:
                 summary = json.load(f)
             wandb.run.summary.update(summary["results"]["mean"]["1"])
             wandb.finish()

@@ -721,7 +721,7 @@ class nnUNetTrainer(NetworkTrainer):
         self.all_val_eval_metrics.append(np.mean(global_dc_per_class))
         wandb.log({'Average Dice (estimate)': np.mean(global_dc_per_class),
                    'Average Recall (estimate)': np.mean(recall_per_class),
-                   'Average Precision (estimate)': np.mean(precision_per_class)})
+                   'Average Precision (estimate)': np.mean(precision_per_class)}, commit=False)
 
         self.print_to_log_file("Average global foreground Dice:", [np.round(i, 4) for i in global_dc_per_class])
         self.print_to_log_file("(interpret this as an estimate for the Dice of the different classes. This is not "
