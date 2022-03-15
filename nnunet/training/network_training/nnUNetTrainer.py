@@ -308,7 +308,7 @@ class nnUNetTrainer(NetworkTrainer):
         del dct['dataset_tr']
         del dct['dataset_val']
         save_json(dct, join(self.output_folder, "debug.json"))
-        wandb.config.update(dct)
+        wandb.config.update(dct, allow_val_change=True)
         import shutil
 
         shutil.copy(self.plans_file, join(self.output_folder_base, "plans.pkl"))
