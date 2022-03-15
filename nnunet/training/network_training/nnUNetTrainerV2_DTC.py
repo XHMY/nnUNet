@@ -23,8 +23,8 @@ from nnunet.network_architecture.initialization import InitWeights_He
 from nnunet.network_architecture.neural_network import SegmentationNetwork
 from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
 from nnunet.training.data_augmentation.level_set import LevelSetTransform
-from nnunet.training.dataloading.dataset_loading import unpack_dataset
-from nnunet.training.loss_functions.deep_supervision_DTC import DTCLoss_DTC
+from nnunet.training.dataloading.dataset_loading import unpack_dataset, DataLoader3D
+from nnunet.training.loss_functions.deep_supervision_DTC import MultipleOutputLoss2DTC
 from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
 from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
 from nnunet.utilities.nd_softmax import softmax_helper
@@ -41,80 +41,8 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                          deterministic, fp16)
 
     def initialize(self, training=True, force_load_plans=False):
-        """
-        - replaced get_default_augmentation with get_moreDA_augmentation
-        - enforce to only run this code once
-        - loss function wrapper for deep supervision
-
-        :param training:
-        :param force_load_plans:
-        :return:
-        """
-        if not self.was_initialized:
-            maybe_mkdir_p(self.output_folder)
-
-            if force_load_plans or (self.plans is None):
-                self.load_plans_file()
-
-            self.process_plans(self.plans)
-
-            self.setup_DA_params()
-
-            ################# Here we wrap the loss for deep supervision ############
-
-            # we need to know the number of outputs of the network
-            net_numpool = len(self.net_num_pool_op_kernel_sizes)
-
-            # we give each output a weight which decreases exponentially (division by 2) as the resolution decreases
-            # this gives higher resolution outputs more weight in the loss
-            weights = np.array([1 / (2 ** i) for i in range(net_numpool)])
-
-            # we don't use the lowest 2 outputs. Normalize weights so that they sum to 1
-            mask = np.array([True] + [True if i < net_numpool - 1 else False for i in range(1, net_numpool)])
-            weights[~mask] = 0
-            weights = weights / weights.sum()
-            self.ds_loss_weights = weights
-            # now wrap the loss
-            self.loss = DTCLoss_DTC(self.loss, self.ds_loss_weights)
-            ################# END ###################
-
-            self.folder_with_preprocessed_data = join(self.dataset_directory, self.plans['data_identifier'] +
-                                                      "_stage%d" % self.stage)
-            if training:
-                self.dl_tr, self.dl_val = self.get_basic_generators()
-                if self.unpack_data:
-                    print("unpacking dataset")
-                    unpack_dataset(self.folder_with_preprocessed_data)
-                    print("done")
-                else:
-                    print(
-                        "INFO: Not unpacking data! Training may be slow due to that. Pray you are not using 2d or you "
-                        "will wait all winter for your model to finish!")
-
-                self.tr_gen, self.val_gen = get_moreDA_augmentation(
-                    self.dl_tr, self.dl_val,
-                    self.data_aug_params[
-                        'patch_size_for_spatialtransform'],
-                    self.data_aug_params,
-                    deep_supervision_scales=self.deep_supervision_scales,
-                    pin_memory=self.pin_memory,
-                    use_nondetMultiThreadedAugmenter=False,
-                    level_set_func=LevelSetTransform()
-                )
-                self.print_to_log_file("TRAINING KEYS:\n %s" % (str(self.dataset_tr.keys())),
-                                       also_print_to_console=False)
-                self.print_to_log_file("VALIDATION KEYS:\n %s" % (str(self.dataset_val.keys())),
-                                       also_print_to_console=False)
-            else:
-                pass
-
-            self.initialize_network()
-            self.initialize_optimizer_and_scheduler()
-
-            assert isinstance(self.network, (SegmentationNetwork, nn.DataParallel))
-        else:
-            self.print_to_log_file('self.was_initialized is True, not running self.initialize again')
-        self.was_initialized = True
+        super().initialize(training=training, force_load_plans=force_load_plans)
+        self.loss = MultipleOutputLoss2DTC(self.loss.loss)
 
     def initialize_network(self):
         if self.threeD:
@@ -165,8 +93,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                                                          use_sliding_window: bool = True, step_size: float = 0.5,
                                                          use_gaussian: bool = True, pad_border_mode: str = 'constant',
                                                          pad_kwargs: dict = None, all_in_gpu: bool = False,
-                                                         verbose: bool = True, mixed_precision=True) -> Tuple[
-        np.ndarray, np.ndarray]:
+                                                         verbose: bool = True, mixed_precision=True) -> Tuple[np.ndarray, np.ndarray]:
         ds = self.network.decoder.deep_supervision
         self.network.decoder.deep_supervision = False
         self.network.decoder.compute_level_set_regression = False
@@ -211,3 +138,17 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
 
         self.network.decoder.deep_supervision = ds
         return ret
+
+    def get_basic_generators(self):
+        self.load_dataset()
+        self.do_split()
+
+        assert self.threeD(), "This function is only implemented for 3D data"
+
+        dl_tr = DataLoader3D(self.dataset_tr, self.basic_generator_patch_size, self.patch_size, self.batch_size,
+                             False, has_level_set=True, oversample_foreground_percent=self.oversample_foreground_percent,
+                             pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
+        dl_val = DataLoader3D(self.dataset_val, self.patch_size, self.patch_size, self.batch_size, False,
+                              has_level_set=True, oversample_foreground_percent=self.oversample_foreground_percent,
+                              pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
+        return dl_tr, dl_val

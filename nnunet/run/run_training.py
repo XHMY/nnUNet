@@ -14,6 +14,8 @@
 
 
 import argparse
+
+import wandb
 from batchgenerators.utilities.file_and_folder_operations import *
 from nnunet.run.default_configuration import get_default_configuration
 from nnunet.paths import default_plans_identifier
@@ -175,6 +177,7 @@ def main():
         trainer.find_lr()
     else:
         if not validation_only:
+            wandb.init(project="YokeynnUNetWork", name=str(task)+trainer_class+network, config=vars(args))
             if args.continue_training:
                 # -c was set, continue a previous training and ignore pretrained weights
                 trainer.load_latest_checkpoint()
@@ -198,6 +201,12 @@ def main():
         trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder,
                          run_postprocessing_on_folds=not disable_postprocessing_on_folds,
                          overwrite=args.val_disable_overwrite)
+
+        if not validation_only:
+            with open(os.path.join(output_folder_name, val_folder, "summary.json"), "r") as f:
+                summary = json.load(f)
+            wandb.run.summary.update(summary["results"]["mean"]["1"])
+            wandb.finish()
 
         if network == '3d_lowres' and not args.disable_next_stage_pred:
             print("predicting segmentations for the next stage of the cascade")

@@ -153,7 +153,7 @@ def crop_2D_image_force_fg(img, crop_size, valid_voxels):
 
 
 class DataLoader3D(SlimDataLoaderBase):
-    def __init__(self, data, patch_size, final_patch_size, batch_size, has_prev_stage=False,
+    def __init__(self, data, patch_size, final_patch_size, batch_size, has_prev_stage=False, has_level_set=False,
                  oversample_foreground_percent=0.0, memmap_mode="r", pad_mode="edge", pad_kwargs_data=None,
                  pad_sides=None):
         """
@@ -178,6 +178,7 @@ class DataLoader3D(SlimDataLoaderBase):
         :param stage: ignore this (Fabian only)
         :param random: Sample keys randomly; CAREFUL! non-random sampling requires batch_size=1, otherwise you will iterate batch_size times over the dataset
         :param oversample_foreground: half the batch will be forced to contain at least some foreground (equal prob for each of the foreground classes)
+        :param has_level_set: if True, the data loader will return a level set instead of a patch (For DTC), undefined for muti-channel images
         """
         super(DataLoader3D, self).__init__(data, batch_size, None)
         if pad_kwargs_data is None:
@@ -187,6 +188,7 @@ class DataLoader3D(SlimDataLoaderBase):
         self.oversample_foreground_percent = oversample_foreground_percent
         self.final_patch_size = final_patch_size
         self.has_prev_stage = has_prev_stage
+        self.has_level_set = has_level_set
         self.patch_size = patch_size
         self.list_of_keys = list(self._data.keys())
         # need_to_pad denotes by how much we need to pad the data so that if we sample a patch of size final_patch_size
@@ -205,7 +207,7 @@ class DataLoader3D(SlimDataLoaderBase):
         return not batch_idx < round(self.batch_size * (1 - self.oversample_foreground_percent))
 
     def determine_shapes(self):
-        if self.has_prev_stage:
+        if self.has_prev_stage or self.has_level_set:
             num_seg = 2
         else:
             num_seg = 1
@@ -245,6 +247,11 @@ class DataLoader3D(SlimDataLoaderBase):
                 case_all_data = np.load(self._data[i]['data_file'][:-4] + ".npy", self.memmap_mode)
             else:
                 case_all_data = np.load(self._data[i]['data_file'])['data']
+
+            if self.has_level_set:
+                assert seg_from_previous_stage is None
+                level_set_all_value = case_all_data[-2]
+                np.delete(case_all_data, -2, axis=0)
 
             # If we are doing the cascade then we will also need to load the segmentation of the previous stage and
             # concatenate it. Here it will be concatenates to the segmentation because the augmentations need to be
@@ -368,12 +375,9 @@ class DataLoader3D(SlimDataLoaderBase):
                                'constant', **{'constant_values': -1})
             if seg_from_previous_stage is not None:
                 seg[j, 1] = np.pad(seg_from_previous_stage, ((0, 0),
-                                                             (-min(0, bbox_x_lb),
-                                                              max(bbox_x_ub - shape[0], 0)),
-                                                             (-min(0, bbox_y_lb),
-                                                              max(bbox_y_ub - shape[1], 0)),
-                                                             (-min(0, bbox_z_lb),
-                                                              max(bbox_z_ub - shape[2], 0))),
+                                                             (-min(0, bbox_x_lb), max(bbox_x_ub - shape[0], 0)),
+                                                             (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
+                                                             (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
                                    'constant', **{'constant_values': 0})
 
         return {'data': data, 'seg': seg, 'properties': case_properties, 'keys': selected_keys}

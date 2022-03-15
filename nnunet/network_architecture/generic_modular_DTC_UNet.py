@@ -418,28 +418,28 @@ if __name__ == "__main__":
                             (2, 2),
                             (2, 2),
                             (2, 2))
-    patch_size = (256, 256)
-    batch_size = 56
-    unet = DTCUNet(4, 32, (2, 2, 2, 2, 2, 2, 2), 2, pool_op_kernel_sizes, conv_op_kernel_sizes,
-                   get_default_network_config(2, dropout_p=None), 4, (2, 2, 2, 2, 2, 2), False, False,
-                   max_features=512).cuda()
+    patch_size = (32, 32, 32)
+    batch_size = 4
+    unet = DTCUNet(1, 32, (2, 2, 2, 2, 2, 2, 2), 2, pool_op_kernel_sizes, conv_op_kernel_sizes,
+                   get_default_network_config(2, dropout_p=None), 2, (2, 2, 2, 2, 2, 2), True, False,
+                   max_features=512)
     optimizer = SGD(unet.parameters(), lr=0.1, momentum=0.95)
 
     unet.compute_reference_for_vram_consumption_3d()
     unet.compute_reference_for_vram_consumption_2d()
 
-    dummy_input = torch.rand((batch_size, 4, *patch_size)).cuda()
-    dummy_gt = (torch.rand((batch_size, 1, *patch_size)) * 4).round().clamp_(0, 3).cuda().long()
+    dummy_input = torch.rand((batch_size, 1, *patch_size))
+    dummy_gt = (torch.rand((batch_size, 1, *patch_size)) * 2).round().clamp_(0, 3).long()
 
     optimizer.zero_grad()
     # loss = DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {})
-    loss = MultipleOutputLoss2(DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {}))
     output = unet(dummy_input)
     print("output[0].shape:", output[0].shape)
     print("output[1].shape:", output[1].shape)
     # for yi, yc in enumerate(output[1]):
     #     print("Shape of output[1][" + str(yi) + "]:", yc.shape)
     exit(0)
+    loss = MultipleOutputLoss2(DC_and_CE_loss({'batch_dice': True, 'smooth': 1e-5, 'do_bg': False}, {}))
     l = loss(output, dummy_gt)
     l.backward()
 

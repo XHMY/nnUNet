@@ -18,6 +18,7 @@ from typing import Tuple
 
 import numpy as np
 import torch
+import wandb
 from batchgenerators.utilities.file_and_folder_operations import *
 from sklearn.model_selection import KFold
 from torch import nn
@@ -411,6 +412,7 @@ class nnUNetTrainerV2(nnUNetTrainer):
             ep = epoch
         self.optimizer.param_groups[0]['lr'] = poly_lr(ep, self.max_num_epochs, self.initial_lr, 0.9)
         self.print_to_log_file("lr:", np.round(self.optimizer.param_groups[0]['lr'], decimals=6))
+        wandb.log({"learning_rate": np.round(self.optimizer.param_groups[0]['lr'], decimals=6)}, commit=False)
 
     def on_epoch_end(self):
         """

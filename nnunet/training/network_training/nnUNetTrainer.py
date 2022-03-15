@@ -22,6 +22,7 @@ from typing import Tuple
 import matplotlib
 import numpy as np
 import torch
+import wandb
 from batchgenerators.utilities.file_and_folder_operations import *
 from torch import nn
 from torch.optim import lr_scheduler
@@ -307,7 +308,7 @@ class nnUNetTrainer(NetworkTrainer):
         del dct['dataset_tr']
         del dct['dataset_val']
         save_json(dct, join(self.output_folder, "debug.json"))
-
+        wandb.config.update(dct)
         import shutil
 
         shutil.copy(self.plans_file, join(self.output_folder_base, "plans.pkl"))
@@ -527,7 +528,7 @@ class nnUNetTrainer(NetworkTrainer):
     def validate(self, do_mirroring: bool = True, use_sliding_window: bool = True, step_size: float = 0.5,
                  save_softmax: bool = True, use_gaussian: bool = True, overwrite: bool = True,
                  validation_folder_name: str = 'validation_raw', debug: bool = False, all_in_gpu: bool = False,
-                 segmentation_export_kwargs: dict = None, run_postprocessing_on_folds: bool = True):
+                 segmentation_export_kwargs: dict = None, run_postprocessing_on_folds: bool = False):
         """
         if debug=True then the temporary files generated for postprocessing determination will be kept
         """
@@ -643,7 +644,7 @@ class nnUNetTrainer(NetworkTrainer):
         _ = aggregate_scores(pred_gt_tuples, labels=list(range(self.num_classes)),
                              json_output_file=join(output_folder, "summary.json"),
                              json_name=job_name + " val tiled %s" % (str(use_sliding_window)),
-                             json_author="Fabian",
+                             json_author="Yokey",
                              json_task=task, num_threads=default_num_threads)
 
         if run_postprocessing_on_folds:
@@ -713,7 +714,14 @@ class nnUNetTrainer(NetworkTrainer):
         global_dc_per_class = [i for i in [2 * i / (2 * i + j + k) for i, j, k in
                                            zip(self.online_eval_tp, self.online_eval_fp, self.online_eval_fn)]
                                if not np.isnan(i)]
+        recall_per_class = [i for i in [tp / (tp + fn) for tp, fn in
+                                           zip(self.online_eval_tp, self.online_eval_fn)] if not np.isnan(i)]
+        precision_per_class = [i for i in [tp / (tp + fp) for tp, fp in
+                                        zip(self.online_eval_tp, self.online_eval_fp)] if not np.isnan(i)]
         self.all_val_eval_metrics.append(np.mean(global_dc_per_class))
+        wandb.log({'Average Dice (estimate)': np.mean(global_dc_per_class),
+                   'Average Recall (estimate)': np.mean(recall_per_class),
+                   'Average Precision (estimate)': np.mean(precision_per_class)})
 
         self.print_to_log_file("Average global foreground Dice:", [np.round(i, 4) for i in global_dc_per_class])
         self.print_to_log_file("(interpret this as an estimate for the Dice of the different classes. This is not "

@@ -37,6 +37,7 @@ from abc import abstractmethod
 from datetime import datetime
 from tqdm import trange
 from nnunet.utilities.to_torch import maybe_to_torch, to_cuda
+import wandb
 
 
 class NetworkTrainer(object):
@@ -458,6 +459,7 @@ class NetworkTrainer(object):
 
             self.all_tr_losses.append(np.mean(train_losses_epoch))
             self.print_to_log_file("train loss : %.4f" % self.all_tr_losses[-1])
+            wandb.log({"epoch": self.epoch, "train_loss": self.all_tr_losses[-1]}, commit=False)
 
             with torch.no_grad():
                 # validation with train=False
@@ -467,6 +469,7 @@ class NetworkTrainer(object):
                     l = self.run_iteration(self.val_gen, False, True)
                     val_losses.append(l)
                 self.all_val_losses.append(np.mean(val_losses))
+                wandb.log({"val_loss": self.all_val_losses[-1]}, commit=False)
                 self.print_to_log_file("validation loss: %.4f" % self.all_val_losses[-1])
 
                 if self.also_val_in_tr_mode:
@@ -491,6 +494,7 @@ class NetworkTrainer(object):
 
             self.epoch += 1
             self.print_to_log_file("This epoch took %f s\n" % (epoch_end_time - epoch_start_time))
+            wandb.log({"epoch_time_spend": epoch_end_time - epoch_start_time})  # Finish this step log
 
         self.epoch -= 1  # if we don't do this we can get a problem with loading model_final_checkpoint.
 
@@ -512,6 +516,7 @@ class NetworkTrainer(object):
             else:
                 self.lr_scheduler.step(self.epoch + 1)
         self.print_to_log_file("lr is now (scheduler) %s" % str(self.optimizer.param_groups[0]['lr']))
+        wandb.log({"learning_rate": np.round(self.optimizer.param_groups[0]['lr'], decimals=6)}, commit=False)
 
     def maybe_save_checkpoint(self):
         """

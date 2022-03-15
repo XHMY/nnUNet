@@ -18,7 +18,7 @@ import torch
 from torch import nn
 
 
-class DTCLoss_DTC(nn.Module):
+class MultipleOutputLoss2DTC(nn.Module):
     def __init__(self, seg_loss, weight_factors=None, consistency=1.0, consistency_rampup=40.0, is_unsupervised=False):
         """
         use this if you have several outputs and ground truth (both list of same len) and the loss should be computed
@@ -26,7 +26,7 @@ class DTCLoss_DTC(nn.Module):
         :param seg_loss:
         :param weight_factors:
         """
-        super(DTCLoss_DTC, self).__init__()
+        super(DTCLoss, self).__init__()
         self.weight_factors = weight_factors
         self.seg_loss = seg_loss
         self.mse_loss = nn.MSELoss()
@@ -48,22 +48,7 @@ class DTCLoss_DTC(nn.Module):
 
         return self.consistency * sigmoid_rampup(epoch, self.consistency_rampup)
 
-    def seg_deep_super_loss(self, x, y):
-        assert isinstance(x, (tuple, list)), "x must be either tuple or list. But got type " \
-                                             + str(type(x)) + " shape " + str(x.shape)
-        assert isinstance(y, (tuple, list)), "y must be either tuple or list" \
-                                             + str(type(y)) + " shape " + str(y.shape)
 
-        if self.weight_factors is None:
-            weights = [1] * len(x)
-        else:
-            weights = self.weight_factors
-
-        l = weights[0] * self.seg_loss(x[0], y[0])
-        for i in range(1, len(x)):
-            if weights[i] != 0:
-                l += weights[i] * self.seg_loss(x[i], y[i])
-        return l
 
     def lsf_loss(self, x, y):
         return self.mse_loss(x, y)
