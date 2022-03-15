@@ -177,7 +177,7 @@ def main():
         trainer.find_lr()
     else:
         if not validation_only:
-            wandb.init(project="YokeynnUNetWork", name=str(task)+"_"+network_trainer+"_"+network, config=vars(args))
+            wandb.init(project="YokeynnUNetWork", name=str(task)+"-"+network_trainer+"-"+network, config=vars(args))
             if args.continue_training:
                 # -c was set, continue a previous training and ignore pretrained weights
                 trainer.load_latest_checkpoint()
