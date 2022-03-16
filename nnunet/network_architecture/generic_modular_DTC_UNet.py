@@ -225,11 +225,12 @@ class DTCUNetDecoder(nn.Module):
 
         self.tus = []
         self.stages = []
-        self.deep_supervision_outputs = []
+        self.deep_supervision_seg_outputs = []
+        self.deep_supervision_lsf_outputs = []
 
         # only used for upsample_logits
         cum_upsample = np.cumprod(np.vstack(self.stage_pool_kernel_size), axis=0).astype(int)
-
+        self.tanh = nn.Tanh()
         for i, s in enumerate(np.arange(num_stages)[::-1]):
             features_below = previous_stage_output_features[s + 1]
             features_skip = previous_stage_output_features[s]
@@ -242,27 +243,32 @@ class DTCUNetDecoder(nn.Module):
                                                  num_blocks_per_stage[i]))
 
             if deep_supervision and s != 0:
+                assert self.compute_level_set_regression, "deep supervision only makes sense if we compute level set regression"
                 seg_layer = self.props['conv_op'](features_skip, num_classes, 1, 1, 0, 1, 1, False)
+                lsf_layer = self.props['conv_op'](features_skip, num_classes, 1, 1, 0, 1, 1, False)
                 if upscale_logits:
                     upsample = Upsample(scale_factor=cum_upsample[s], mode=upsample_mode)
-                    self.deep_supervision_outputs.append(nn.Sequential(seg_layer, upsample))
+                    self.deep_supervision_seg_outputs.append(nn.Sequential(seg_layer, upsample))
+                    self.deep_supervision_lsf_outputs.append(nn.Sequential(lsf_layer, self.tanh, upsample))
                 else:
-                    self.deep_supervision_outputs.append(seg_layer)
+                    self.deep_supervision_seg_outputs.append(seg_layer)
+                    self.deep_supervision_lsf_outputs.append(nn.Sequential(lsf_layer, self.tanh))
 
         self.segmentation_output = self.props['conv_op'](features_skip, num_classes, 1, 1, 0, 1, 1, False)
-        self.tanh = nn.Tanh()
         self.regression_output = self.props['conv_op'](features_skip, num_classes, 1, 1, 0, 1, 1, False)
 
         self.tus = nn.ModuleList(self.tus)
         self.stages = nn.ModuleList(self.stages)
-        self.deep_supervision_outputs = nn.ModuleList(self.deep_supervision_outputs)
+        self.deep_supervision_seg_outputs = nn.ModuleList(self.deep_supervision_seg_outputs)
+        self.deep_supervision_lsf_outputs = nn.ModuleList(self.deep_supervision_lsf_outputs)
 
-    def forward(self, skips, gt=None, loss=None):
+    def forward(self, skips):
         # skips come from the encoder. They are sorted so that the bottleneck is last in the list
         # what is maybe not perfect is that the TUs and stages here are sorted the other way around
         # so let's just reverse the order of skips
         skips = skips[::-1]
         seg_outputs = []
+        lsf_outputs = []
 
         x = skips[0]  # this is the bottleneck
 
@@ -271,10 +277,10 @@ class DTCUNetDecoder(nn.Module):
             x = torch.cat((x, skips[i + 1]), dim=1)
             x = self.stages[i](x)
             if self.deep_supervision and (i != len(self.tus) - 1):
-                tmp = self.deep_supervision_outputs[i](x)
-                if gt is not None:
-                    tmp = loss(tmp, gt)
-                seg_outputs.append(tmp)
+                tmp_seg = self.deep_supervision_seg_outputs[i](x)
+                tmp_lsf = self.deep_supervision_lsf_outputs[i](x)
+                seg_outputs.append(tmp_seg)
+                lsf_outputs.append(tmp_lsf)
 
         segmentation = self.segmentation_output(x)
 
@@ -282,10 +288,10 @@ class DTCUNetDecoder(nn.Module):
             regression = self.tanh(self.regression_output(x))
 
         if self.deep_supervision:
-            tmp = segmentation
-            if gt is not None:
-                tmp = loss(tmp, gt)
-            seg_outputs.append(tmp)
+            tmp_seg = segmentation
+            tmp_lsf = regression
+            seg_outputs.append(tmp_seg)
+            lsf_outputs.append(tmp_lsf)
 
             # print("Network Said:",
             #       "\nregression output shape:", regression.shape,
@@ -293,7 +299,7 @@ class DTCUNetDecoder(nn.Module):
             # for seg_outputs_i, seg_outputs_c in enumerate(seg_outputs):
             #     print("Shape of seg_outputs[" + str(seg_outputs_i) + "]:", seg_outputs_c.shape)
 
-            return (regression, seg_outputs[::-1]) if self.compute_level_set_regression else seg_outputs[::-1]
+            return torch.stack([lsf_outputs[::-1], seg_outputs[::-1]])
             # seg_outputs are ordered so that the seg from the highest layer is first,
             # the seg from the bottleneck of the UNet last
         else:
@@ -421,7 +427,7 @@ if __name__ == "__main__":
     patch_size = (32, 32, 32)
     batch_size = 4
     unet = DTCUNet(1, 32, (2, 2, 2, 2, 2, 2, 2), 2, pool_op_kernel_sizes, conv_op_kernel_sizes,
-                   get_default_network_config(2, dropout_p=None), 2, (2, 2, 2, 2, 2, 2), True, False,
+                   get_default_network_config(3, dropout_p=None), 2, (2, 2, 2, 2, 2, 2), True, False,
                    max_features=512)
     optimizer = SGD(unet.parameters(), lr=0.1, momentum=0.95)
 

@@ -15,8 +15,10 @@ from typing import Tuple
 
 import numpy as np
 import torch
+import wandb
 from batchgenerators.utilities.file_and_folder_operations import *
 from torch import nn
+from torch.cuda.amp import autocast
 
 from nnunet.network_architecture.generic_modular_DTC_UNet import DTCUNet, get_default_network_config
 from nnunet.network_architecture.initialization import InitWeights_He
@@ -28,6 +30,7 @@ from nnunet.training.loss_functions.deep_supervision_DTC import MultipleOutputLo
 from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
 from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
 from nnunet.utilities.nd_softmax import softmax_helper
+from nnunet.utilities.to_torch import maybe_to_torch, to_cuda
 
 
 class nnUNetTrainerV2DTC(nnUNetTrainerV2):
@@ -39,10 +42,13 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                  unpack_data=True, deterministic=True, fp16=False):
         super().__init__(plans_file, fold, output_folder, dataset_directory, batch_dice, stage, unpack_data,
                          deterministic, fp16)
+        self.consis_weight = 0.3
+        self.lsf_weight = 0.3
+
 
     def initialize(self, training=True, force_load_plans=False):
         super().initialize(training=training, force_load_plans=force_load_plans)
-        self.loss = MultipleOutputLoss2DTC(self.loss.loss)
+        self.loss = MultipleOutputLoss2DTC(seg_loss=self.loss.seg_loss, weight_factors=self.loss.weight_factors)
 
     def initialize_network(self):
         if self.threeD:
@@ -80,20 +86,16 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         :param target:
         :return:
         """
-        target = target[1]
-        output = output[1]
-        return super().run_online_evaluation(output, target)
-
-    def on_epoch_end(self):
-        self.loss.cur_epochs = self.epoch
-        return super().on_epoch_end()
+        # data: [[deep_super_layer(n)_lsf, deep_super_layer(n)_seg], [deep_super_layer(n-1)_lsf, deep_super_layer(n-1)_seg], ...]
+        return nnUNetTrainer.run_online_evaluation(output[0][1], target[0][1])
 
     def predict_preprocessed_data_return_seg_and_softmax(self, data: np.ndarray, do_mirroring: bool = True,
                                                          mirror_axes: Tuple[int] = None,
                                                          use_sliding_window: bool = True, step_size: float = 0.5,
                                                          use_gaussian: bool = True, pad_border_mode: str = 'constant',
                                                          pad_kwargs: dict = None, all_in_gpu: bool = False,
-                                                         verbose: bool = True, mixed_precision=True) -> Tuple[np.ndarray, np.ndarray]:
+                                                         verbose: bool = True, mixed_precision=True) -> Tuple[
+        np.ndarray, np.ndarray]:
         ds = self.network.decoder.deep_supervision
         self.network.decoder.deep_supervision = False
         self.network.decoder.compute_level_set_regression = False
@@ -118,7 +120,63 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         self.network.decoder.deep_supervision = True
         ret = nnUNetTrainer.run_training(self)
         self.network.decoder.deep_supervision = ds
+        self.loss.set_epoch(self.epoch)
         return ret
+
+    def run_iteration(self, data_generator, do_backprop=True, run_online_evaluation=False):
+        """
+        gradient clipping improves training stability
+
+        :param data_generator:
+        :param do_backprop:
+        :param run_online_evaluation:
+        :return:
+        """
+        assert self.fp16, "only implemented for fp16"
+
+        data_dict = next(data_generator)
+        data = data_dict['data']
+        target = data_dict['target']
+
+        data = maybe_to_torch(data)
+        target = maybe_to_torch(target)
+
+        # print("data.shape:", data.shape)
+        # print("target length:", len(target))
+        # print("target[0].shape", target[0].shape)
+        # for yi, yc in enumerate(target[1]):
+        #     print("Shape of y[1][" + str(yi) + "]:", yc.shape)
+
+        if torch.cuda.is_available():
+            data = to_cuda(data)
+            target = to_cuda(target)
+
+        self.optimizer.zero_grad()
+
+        with autocast():
+            output = self.network(data)
+            del data
+            l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
+            l = (1-self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
+                self.consis_weight * rampup_consistency_weight * l_consis
+
+        if do_backprop:
+            self.amp_grad_scaler.scale(l).backward()
+            self.amp_grad_scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.network.parameters(), 12)
+            self.amp_grad_scaler.step(self.optimizer)
+            self.amp_grad_scaler.update()
+
+        if run_online_evaluation:
+            self.run_online_evaluation(output, target)
+
+        self.loss_detail_log_sum["seg_loss"].append(l_seg.detach().cpu().numpy())
+        self.loss_detail_log_sum["lsf_loss"].append(l_lsf.detach().cpu().numpy())
+        self.loss_detail_log_sum["consis_loss"].append(l_consis.detach().cpu().numpy())
+
+        del target
+
+        return l.detach().cpu().numpy()
 
     def validate(self, do_mirroring: bool = True, use_sliding_window: bool = True,
                  step_size: float = 0.5, save_softmax: bool = True, use_gaussian: bool = True, overwrite: bool = True,
@@ -146,7 +204,8 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         assert self.threeD(), "This function is only implemented for 3D data"
 
         dl_tr = DataLoader3D(self.dataset_tr, self.basic_generator_patch_size, self.patch_size, self.batch_size,
-                             False, has_level_set=True, oversample_foreground_percent=self.oversample_foreground_percent,
+                             False, has_level_set=True,
+                             oversample_foreground_percent=self.oversample_foreground_percent,
                              pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
         dl_val = DataLoader3D(self.dataset_val, self.patch_size, self.patch_size, self.batch_size, False,
                               has_level_set=True, oversample_foreground_percent=self.oversample_foreground_percent,

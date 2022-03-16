@@ -412,7 +412,7 @@ class NetworkTrainer(object):
         """
         pass
 
-    def run_training(self):
+    def run_training(self, enable_dtc=False):
         if not torch.cuda.is_available():
             self.print_to_log_file("WARNING!!! You are attempting to run training on a CPU (torch.cuda.is_available() is False). This can be VERY slow!")
 
@@ -442,7 +442,8 @@ class NetworkTrainer(object):
 
             # train one epoch
             self.network.train()
-
+            if enable_dtc:
+                self.loss_detail_log_sum = {"seg_loss": [], "lsf_loss": [], "consis_loss": []}
             if self.use_progress_bar:
                 with trange(self.num_batches_per_epoch) as tbar:
                     for b in tbar:
@@ -460,7 +461,12 @@ class NetworkTrainer(object):
             self.all_tr_losses.append(np.mean(train_losses_epoch))
             self.print_to_log_file("train loss : %.4f" % self.all_tr_losses[-1])
             wandb.log({"epoch": self.epoch, "train_loss": self.all_tr_losses[-1]}, commit=False)
-
+            if enable_dtc:
+                wandb.log({"train_loss_seg": np.mean(self.loss_detail_log_sum["seg_loss"]),
+                           "train_loss_lsf": np.mean(self.loss_detail_log_sum["lsf_loss"]),
+                           "train_loss_consis": np.mean(self.loss_detail_log_sum["consis_loss"])}, commit=False)
+            if enable_dtc:
+                self.loss_detail_log_sum = {"seg_loss": [], "lsf_loss": [], "consis_loss": []}
             with torch.no_grad():
                 # validation with train=False
                 self.network.eval()
@@ -470,6 +476,10 @@ class NetworkTrainer(object):
                     val_losses.append(l)
                 self.all_val_losses.append(np.mean(val_losses))
                 wandb.log({"val_loss": self.all_val_losses[-1]}, commit=False)
+                if enable_dtc:
+                    wandb.log({"val_loss_seg": np.mean(self.loss_detail_log_sum["seg_loss"]),
+                               "val_loss_lsf": np.mean(self.loss_detail_log_sum["lsf_loss"]),
+                               "val_loss_consis": np.mean(self.loss_detail_log_sum["consis_loss"])}, commit=False)
                 self.print_to_log_file("validation loss: %.4f" % self.all_val_losses[-1])
 
                 if self.also_val_in_tr_mode:
@@ -494,7 +504,7 @@ class NetworkTrainer(object):
 
             self.epoch += 1
             self.print_to_log_file("This epoch took %f s\n" % (epoch_end_time - epoch_start_time))
-            wandb.log({"epoch_time_spend": epoch_end_time - epoch_start_time})  # Finish this step log
+            wandb.log({"epoch_time_spend": epoch_end_time - epoch_start_time}, commit=True) # commit=True is important here! finish this step log.
 
         self.epoch -= 1  # if we don't do this we can get a problem with loading model_final_checkpoint.
 

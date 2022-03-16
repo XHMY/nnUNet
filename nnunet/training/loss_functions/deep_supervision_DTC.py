@@ -19,25 +19,31 @@ from torch import nn
 
 
 class MultipleOutputLoss2DTC(nn.Module):
-    def __init__(self, seg_loss, weight_factors=None, consistency=1.0, consistency_rampup=40.0, is_unsupervised=False):
+    def __init__(self, seg_loss, weight_factors=None, consistency=1.0, consistency_rampup=150.0):
         """
+        for dual task output
         use this if you have several outputs and ground truth (both list of same len) and the loss should be computed
         between them (x[0] and y[0], x[1] and y[1] etc)
         :param seg_loss:
         :param weight_factors:
         """
-        super(DTCLoss, self).__init__()
+        super(MultipleOutputLoss2DTC, self).__init__()
         self.weight_factors = weight_factors
         self.seg_loss = seg_loss
-        self.mse_loss = nn.MSELoss()
+        self.lsf_loss = nn.MSELoss()
         self.consistency = consistency
         self.consistency_rampup = consistency_rampup
-        self.cur_epochs = 0
-        self.is_unsupervised = is_unsupervised
+        self.epoch = 0
 
-    def get_current_consistency_weight(self, epoch):
+    def consistency_loss(self, seg_output, lsf_output):
+        return self.lsf_loss(seg_output, torch.sigmoid(-1500 * lsf_output))  # Question: why don't we use dice loss
+        # return self.seg_loss(seg_output, torch.sigmoid(-1500 * lsf_output))
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+
+    def get_current_consistency_weight(self):
         # Consistency ramp-up from https://arxiv.org/abs/1610.02242
-
         def sigmoid_rampup(current, rampup_length):
             if rampup_length == 0:
                 return 1.0
@@ -46,33 +52,26 @@ class MultipleOutputLoss2DTC(nn.Module):
                 phase = 1.0 - current / rampup_length
                 return float(np.exp(-5.0 * phase * phase))
 
-        return self.consistency * sigmoid_rampup(epoch, self.consistency_rampup)
+        return self.consistency * sigmoid_rampup(self.epoch, self.consistency_rampup)
 
+    def forward(self, output, target):
+        assert isinstance(output, (tuple, list)), "x must be either tuple or list"
+        assert isinstance(target, (tuple, list)), "y must be either tuple or list"
+        if self.weight_factors is None:
+            weights = [1] * len(output)
+        else:
+            weights = self.weight_factors
 
+        l_seg = weights[0] * self.seg_loss(output[0][1], target[0][1])
+        l_lsf = weights[0] * self.lsf_loss(output[0][0], target[0][0])
+        l_consis = weights[0] * self.consistency_loss(output[0][1], output[0][0])
+        for i in range(1, len(output)):
+            if weights[i] != 0:
+                l_seg += weights[i] * self.seg_loss(output[i], target[i])
+                l_lsf += weights[i] * self.lsf_loss(output[i][0], target[i][0])
+                l_consis += weights[i] * self.consistency_loss(output[i][1], output[i][0])
+        return l_seg, l_lsf, l_consis, self.get_current_consistency_weight()
 
-    def lsf_loss(self, x, y):
-        return self.mse_loss(x, y)
-
-    def dtc_loss(self, x, y):
-        return self.mse_loss(torch.sigmoid(-1500 * x), y)
-
-    def forward(self, x, y):
-        """
-        param x: x[0] is regression output, x[1] is segmentation output in different layer
-        """
-        # print("Length of x,y:", len(x), len(y))
-        # for xi, xc in enumerate(x[1]):
-        #     print("Shape of x[1][" + str(xi) + "]:", xc.shape)
-        # for yi, yc in enumerate(y[1]):
-        #     print("Shape of y[1][" + str(yi) + "]:", yc.shape)
-        #     print("Sum:", torch.sum(yc))
-
-        unsupervised_loss = self.dtc_loss(x[1][0], x[0])
-        if self.is_unsupervised:
-            return unsupervised_loss
-        supervise_loss = self.seg_deep_super_loss(x[1], y[1]) + 0.3 * self.lsf_loss(x[0], y[0])
-        consistency_weight = self.get_current_consistency_weight(self.cur_epochs)
-        return supervise_loss + unsupervised_loss * consistency_weight
 
 
 if __name__ == '__main__':
