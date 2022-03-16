@@ -48,7 +48,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
 
     def initialize(self, training=True, force_load_plans=False):
         super().initialize(training=training, force_load_plans=force_load_plans)
-        self.loss = MultipleOutputLoss2DTC(seg_loss=self.loss.seg_loss, weight_factors=self.loss.weight_factors)
+        self.loss = MultipleOutputLoss2DTC(seg_loss=self.loss.loss, weight_factors=self.loss.weight_factors)
 
     def initialize_network(self):
         if self.threeD:
@@ -201,7 +201,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         self.load_dataset()
         self.do_split()
 
-        assert self.threeD(), "This function is only implemented for 3D data"
+        assert self.threeD, "This function is only implemented for 3D data"
 
         dl_tr = DataLoader3D(self.dataset_tr, self.basic_generator_patch_size, self.patch_size, self.batch_size,
                              False, has_level_set=True,

@@ -249,8 +249,8 @@ class DataLoader3D(SlimDataLoaderBase):
                 case_all_data = np.load(self._data[i]['data_file'])['data']
 
             if self.has_level_set:
-                assert seg_from_previous_stage is None
-                level_set_all_value = case_all_data[-2]
+                assert not self.has_prev_stage
+                level_set_all_value = np.expand_dims(case_all_data[-2], axis=0)
                 np.delete(case_all_data, -2, axis=0)
 
             # If we are doing the cascade then we will also need to load the segmentation of the previous stage and
@@ -357,6 +357,9 @@ class DataLoader3D(SlimDataLoaderBase):
             case_all_data = np.copy(case_all_data[:, valid_bbox_x_lb:valid_bbox_x_ub,
                                     valid_bbox_y_lb:valid_bbox_y_ub,
                                     valid_bbox_z_lb:valid_bbox_z_ub])
+            level_set_all_value = np.copy(level_set_all_value[:, valid_bbox_x_lb:valid_bbox_x_ub,
+                                    valid_bbox_y_lb:valid_bbox_y_ub,
+                                    valid_bbox_z_lb:valid_bbox_z_ub])
             if seg_from_previous_stage is not None:
                 seg_from_previous_stage = seg_from_previous_stage[:, valid_bbox_x_lb:valid_bbox_x_ub,
                                           valid_bbox_y_lb:valid_bbox_y_ub,
@@ -374,11 +377,18 @@ class DataLoader3D(SlimDataLoaderBase):
                                                     (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
                                'constant', **{'constant_values': -1})
             if seg_from_previous_stage is not None:
+                assert not self.has_level_set
                 seg[j, 1] = np.pad(seg_from_previous_stage, ((0, 0),
                                                              (-min(0, bbox_x_lb), max(bbox_x_ub - shape[0], 0)),
                                                              (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
                                                              (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
                                    'constant', **{'constant_values': 0})
+            elif self.has_level_set:
+                seg[j, 1] = np.pad(level_set_all_value, ((0, 0),
+                                                         (-min(0, bbox_x_lb), max(bbox_x_ub - shape[0], 0)),
+                                                         (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
+                                                         (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
+                                   'edge')
 
         return {'data': data, 'seg': seg, 'properties': case_properties, 'keys': selected_keys}
 
@@ -598,14 +608,15 @@ class DataLoader2D(SlimDataLoaderBase):
 
 
 if __name__ == "__main__":
-    t = "Task002_Heart"
-    p = join(preprocessing_output_dir, t, "stage1")
+    t = "Task554_LungNoduleSE"
+    p = join(preprocessing_output_dir, t, "nnUNetData_plans_v2.1_stage0")
     dataset = load_dataset(p)
-    with open(join(join(preprocessing_output_dir, t), "plans_stage1.pkl"), 'rb') as f:
+    with open(join(join(preprocessing_output_dir, t), "nnUNetPlans_FabiansResUNet_v2.1_plans_3D.pkl"), 'rb') as f:
         plans = pickle.load(f)
     unpack_dataset(p)
-    dl = DataLoader3D(dataset, (32, 32, 32), (32, 32, 32), 2, oversample_foreground_percent=0.33)
-    dl = DataLoader3D(dataset, np.array(plans['patch_size']).astype(int), np.array(plans['patch_size']).astype(int), 2,
-                      oversample_foreground_percent=0.33)
-    dl2d = DataLoader2D(dataset, (64, 64), np.array(plans['patch_size']).astype(int)[1:], 12,
-                        oversample_foreground_percent=0.33)
+    dl = DataLoader3D(dataset, (64, 64, 64), (32, 32, 32), 2, oversample_foreground_percent=0.33, has_level_set=True)
+    dl.__next__()
+    # dl = DataLoader3D(dataset, np.array(plans['patch_size']).astype(int), np.array(plans['patch_size']).astype(int), 2,
+    #                   oversample_foreground_percent=0.33)
+    # dl2d = DataLoader2D(dataset, (64, 64), np.array(plans['patch_size']).astype(int)[1:], 12,
+    #                     oversample_foreground_percent=0.33)
