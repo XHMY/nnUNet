@@ -208,10 +208,10 @@ def main():
             with open(os.path.join(trainer.output_folder, val_folder, "summary.json"), "r") as f:
                 summary = json.load(f)
             wandb.run.summary.update(summary["results"]["mean"]["1"])
-            wandb.save("summary.json", os.path.join(trainer.output_folder, val_folder), policy="end")
-            wandb.save("model_*", trainer.output_folder, policy="end")
-            wandb.save("debug.json", trainer.output_folder, policy="end")
-            wandb.save("progress.png", trainer.output_folder, policy="end")
+            wandb.save(os.path.join(trainer.output_folder, val_folder, "summary.json"), policy="end")
+            wandb.save(os.path.join(trainer.output_folder, "model_*"), policy="end")
+            wandb.save(os.path.join(trainer.output_folder, "debug.json"), policy="end")
+            wandb.save(os.path.join(trainer.output_folder, "progress.png"), policy="end")
             wandb.finish()
 
         if network == '3d_lowres' and not args.disable_next_stage_pred:
