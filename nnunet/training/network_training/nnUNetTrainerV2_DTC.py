@@ -38,7 +38,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                          deterministic, fp16)
         self.consis_weight = 0.3
         self.lsf_weight = 0.3
-        self.max_num_epochs = 3 # For Test Only
+        # self.max_num_epochs = 1 # For Test Only
 
     def initialize(self, training=True, force_load_plans=False):
         super().initialize(training=training, force_load_plans=force_load_plans)
@@ -186,7 +186,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                                      save_softmax=save_softmax, use_gaussian=use_gaussian,
                                      overwrite=overwrite, validation_folder_name=validation_folder_name, debug=debug,
                                      all_in_gpu=all_in_gpu, segmentation_export_kwargs=segmentation_export_kwargs,
-                                     run_postprocessing_on_folds=run_postprocessing_on_folds)
+                                     run_postprocessing_on_folds=run_postprocessing_on_folds, has_lsf=True)
 
         self.network.decoder.deep_supervision = ds
         return ret
