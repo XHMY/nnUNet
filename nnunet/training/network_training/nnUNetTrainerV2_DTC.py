@@ -81,8 +81,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         :param target:
         :return:
         """
-        # data: [[deep_super_layer(n)_lsf, deep_super_layer(n)_seg], [deep_super_layer(n-1)_lsf, deep_super_layer(n-1)_seg], ...]
-        return nnUNetTrainer.run_online_evaluation(output[0][1], target[0][1])
+        return nnUNetTrainer.run_online_evaluation(output[1][0], target[0][:,1::1])
 
     def predict_preprocessed_data_return_seg_and_softmax(self, data: np.ndarray, do_mirroring: bool = True,
                                                          mirror_axes: Tuple[int] = None,
