@@ -36,13 +36,15 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                  unpack_data=True, deterministic=True, fp16=False):
         super().__init__(plans_file, fold, output_folder, dataset_directory, batch_dice, stage, unpack_data,
                          deterministic, fp16)
-        self.consis_weight = 0.3
+        self.consis_weight = 0.4
         self.lsf_weight = 0.3
+        self.consistency_loss_args = 1e-3
         # self.max_num_epochs = 1 # For Test Only
 
     def initialize(self, training=True, force_load_plans=False):
         super().initialize(training=training, force_load_plans=force_load_plans)
-        self.loss = MultipleOutputLoss2DTC(seg_loss=self.loss.loss, weight_factors=self.loss.weight_factors)
+        self.loss = MultipleOutputLoss2DTC(seg_loss=self.loss.loss, weight_factors=self.loss.weight_factors,
+                                           consistency=self.consistency_loss_args)
 
     def initialize_network(self):
         if self.threeD:
