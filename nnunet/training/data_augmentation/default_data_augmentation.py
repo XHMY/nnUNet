@@ -90,7 +90,7 @@ default_3D_augmentation_params = {
     "additive_brightness_sigma": 0.1,
 
     "num_threads": 12 if 'nnUNet_n_proc_DA' not in os.environ else int(os.environ['nnUNet_n_proc_DA']),
-    "num_cached_per_thread": 1,
+    "num_cached_per_thread": 2,
 }
 
 default_2D_augmentation_params = deepcopy(default_3D_augmentation_params)
