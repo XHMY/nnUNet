@@ -44,7 +44,8 @@ def get_moreDA_augmentation(dataloader_train, dataloader_val, patch_size, params
                             soft_ds=False,
                             classes=None, pin_memory=True, regions=None,
                             use_nondetMultiThreadedAugmenter: bool = False,
-                            level_set_func=None):
+                            level_set_func=None,
+                            has_level_set=False):
     assert params.get('mirror') is None, "old version of params, use new keyword do_mirror"
 
     tr_transforms = []
@@ -113,7 +114,10 @@ def get_moreDA_augmentation(dataloader_train, dataloader_val, patch_size, params
 
     if params.get("mask_was_used_for_normalization") is not None:
         mask_was_used_for_normalization = params.get("mask_was_used_for_normalization")
-        tr_transforms.append(MaskTransform(mask_was_used_for_normalization, mask_idx_in_seg=0, set_outside_to=0))
+        if has_level_set:
+            tr_transforms.append(MaskTransform(mask_was_used_for_normalization, mask_idx_in_seg=1, set_outside_to=1))
+        else:
+            tr_transforms.append(MaskTransform(mask_was_used_for_normalization, mask_idx_in_seg=0, set_outside_to=0))
 
     tr_transforms.append(RemoveLabelTransform(-1, 0))
 

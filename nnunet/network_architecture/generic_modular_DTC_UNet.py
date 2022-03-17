@@ -299,7 +299,7 @@ class DTCUNetDecoder(nn.Module):
             # for seg_outputs_i, seg_outputs_c in enumerate(seg_outputs):
             #     print("Shape of seg_outputs[" + str(seg_outputs_i) + "]:", seg_outputs_c.shape)
 
-            return torch.stack([lsf_outputs[::-1], seg_outputs[::-1]])
+            return lsf_outputs[::-1], seg_outputs[::-1]
             # seg_outputs are ordered so that the seg from the highest layer is first,
             # the seg from the bottleneck of the UNet last
         else:

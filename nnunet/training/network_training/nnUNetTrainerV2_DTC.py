@@ -15,17 +15,11 @@ from typing import Tuple
 
 import numpy as np
 import torch
-import wandb
-from batchgenerators.utilities.file_and_folder_operations import *
-from torch import nn
 from torch.cuda.amp import autocast
 
 from nnunet.network_architecture.generic_modular_DTC_UNet import DTCUNet, get_default_network_config
 from nnunet.network_architecture.initialization import InitWeights_He
-from nnunet.network_architecture.neural_network import SegmentationNetwork
-from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
-from nnunet.training.data_augmentation.level_set import LevelSetTransform
-from nnunet.training.dataloading.dataset_loading import unpack_dataset, DataLoader3D
+from nnunet.training.dataloading.dataset_loading import DataLoader3D
 from nnunet.training.loss_functions.deep_supervision_DTC import MultipleOutputLoss2DTC
 from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
 from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
@@ -44,7 +38,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                          deterministic, fp16)
         self.consis_weight = 0.3
         self.lsf_weight = 0.3
-
+        self.max_num_epochs = 3 # For Test Only
 
     def initialize(self, training=True, force_load_plans=False):
         super().initialize(training=training, force_load_plans=force_load_plans)
@@ -75,6 +69,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         net_num_pool_op_kernel_sizes is different in resunet
         """
         super().setup_DA_params()
+        self.data_aug_params['selected_seg_channels'] = None
         self.deep_supervision_scales = [[1, 1, 1]] + list(list(i) for i in 1 / np.cumprod(
             np.vstack(self.net_num_pool_op_kernel_sizes[1:]), axis=0))[:-1]
 
@@ -118,7 +113,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         # want at the start of the training
         ds = self.network.decoder.deep_supervision
         self.network.decoder.deep_supervision = True
-        ret = nnUNetTrainer.run_training(self)
+        ret = nnUNetTrainer.run_training(self, enable_dtc=True)
         self.network.decoder.deep_supervision = ds
         self.loss.set_epoch(self.epoch)
         return ret
@@ -157,7 +152,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
             output = self.network(data)
             del data
             l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
-            l = (1-self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
+            l = (1 - self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
                 self.consis_weight * rampup_consistency_weight * l_consis
 
         if do_backprop:

@@ -217,7 +217,10 @@ class DataLoader3D(SlimDataLoaderBase):
             case_all_data = np.load(self._data[k]['data_file'][:-4] + ".npy", self.memmap_mode)
         else:
             case_all_data = np.load(self._data[k]['data_file'])['data']
-        num_color_channels = case_all_data.shape[0] - 1
+        if self.has_level_set:
+            num_color_channels = case_all_data.shape[0] - 2
+        else:
+            num_color_channels = case_all_data.shape[0] - 1
         data_shape = (self.batch_size, num_color_channels, *self.patch_size)
         seg_shape = (self.batch_size, num_seg, *self.patch_size)
         return data_shape, seg_shape
@@ -251,7 +254,7 @@ class DataLoader3D(SlimDataLoaderBase):
             if self.has_level_set:
                 assert not self.has_prev_stage
                 level_set_all_value = np.expand_dims(case_all_data[-2], axis=0)
-                np.delete(case_all_data, -2, axis=0)
+                case_all_data = np.delete(case_all_data, -2, axis=0)
 
             # If we are doing the cascade then we will also need to load the segmentation of the previous stage and
             # concatenate it. Here it will be concatenates to the segmentation because the augmentations need to be
@@ -389,7 +392,7 @@ class DataLoader3D(SlimDataLoaderBase):
                                                          (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
                                                          (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
                                    'edge')
-
+        # print("seg.shape", seg.shape)
         return {'data': data, 'seg': seg, 'properties': case_properties, 'keys': selected_keys}
 
 
