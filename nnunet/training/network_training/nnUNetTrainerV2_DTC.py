@@ -39,7 +39,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                          deterministic, fp16)
         self.consis_weight = 0.4
         self.lsf_weight = 0.3
-        self.consistency_loss_args = 1e-3
+        self.consistency_loss_args = 0.5
         # self.max_num_epochs = 1 # For Test Only
 
     def initialize(self, training=True, force_load_plans=False):
