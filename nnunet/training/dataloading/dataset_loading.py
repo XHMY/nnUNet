@@ -360,9 +360,10 @@ class DataLoader3D(SlimDataLoaderBase):
             case_all_data = np.copy(case_all_data[:, valid_bbox_x_lb:valid_bbox_x_ub,
                                     valid_bbox_y_lb:valid_bbox_y_ub,
                                     valid_bbox_z_lb:valid_bbox_z_ub])
-            level_set_all_value = np.copy(level_set_all_value[:, valid_bbox_x_lb:valid_bbox_x_ub,
-                                    valid_bbox_y_lb:valid_bbox_y_ub,
-                                    valid_bbox_z_lb:valid_bbox_z_ub])
+            if self.has_level_set:
+                level_set_all_value = np.copy(level_set_all_value[:, valid_bbox_x_lb:valid_bbox_x_ub,
+                                        valid_bbox_y_lb:valid_bbox_y_ub,
+                                        valid_bbox_z_lb:valid_bbox_z_ub])
             if seg_from_previous_stage is not None:
                 seg_from_previous_stage = seg_from_previous_stage[:, valid_bbox_x_lb:valid_bbox_x_ub,
                                           valid_bbox_y_lb:valid_bbox_y_ub,
@@ -373,12 +374,23 @@ class DataLoader3D(SlimDataLoaderBase):
                                                   (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
                                                   (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
                              self.pad_mode, **self.pad_kwargs_data)
-
-            seg[j, 0] = np.pad(case_all_data[-1:], ((0, 0),
-                                                    (-min(0, bbox_x_lb), max(bbox_x_ub - shape[0], 0)),
-                                                    (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
-                                                    (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
-                               'constant', **{'constant_values': -1})
+            if self.has_level_set:
+                seg[j, 0] = np.pad(level_set_all_value, ((0, 0),
+                                                         (-min(0, bbox_x_lb), max(bbox_x_ub - shape[0], 0)),
+                                                         (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
+                                                         (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
+                                   'edge')
+                seg[j, 1] = np.pad(case_all_data[-1:], ((0, 0),
+                                                        (-min(0, bbox_x_lb), max(bbox_x_ub - shape[0], 0)),
+                                                        (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
+                                                        (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
+                                   'constant', **{'constant_values': -1})
+            else:
+                seg[j, 0] = np.pad(case_all_data[-1:], ((0, 0),
+                                                        (-min(0, bbox_x_lb), max(bbox_x_ub - shape[0], 0)),
+                                                        (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
+                                                        (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
+                                   'constant', **{'constant_values': -1})
             if seg_from_previous_stage is not None:
                 assert not self.has_level_set
                 seg[j, 1] = np.pad(seg_from_previous_stage, ((0, 0),
@@ -386,12 +398,7 @@ class DataLoader3D(SlimDataLoaderBase):
                                                              (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
                                                              (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
                                    'constant', **{'constant_values': 0})
-            elif self.has_level_set:
-                seg[j, 1] = np.pad(level_set_all_value, ((0, 0),
-                                                         (-min(0, bbox_x_lb), max(bbox_x_ub - shape[0], 0)),
-                                                         (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
-                                                         (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
-                                   'edge')
+
         # print("seg.shape", seg.shape)
         return {'data': data, 'seg': seg, 'properties': case_properties, 'keys': selected_keys}
 

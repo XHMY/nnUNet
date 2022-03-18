@@ -419,6 +419,10 @@ class NetworkTrainer(object):
         _ = self.tr_gen.next()
         _ = self.val_gen.next()
 
+        # data_train = self.tr_gen.next()
+        # np.savez(os.path.join(self.output_folder, 'data_train_image.npz'), data=data_train['data'])
+        # np.savez(os.path.join(self.output_folder, 'data_train_label.npz'), data=data_train['target'])
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
