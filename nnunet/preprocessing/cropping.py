@@ -147,7 +147,7 @@ class ImageCropper(object):
     @staticmethod
     def crop(data, properties, seg=None):
         shape_before = data.shape
-        data, seg, bbox = crop_to_nonzero(data, seg, nonzero_label=-1)
+        data, seg, bbox = crop_to_nonzero(data, seg, nonzero_label=0)  # issue486 yokey change to 0
         shape_after = data.shape
         print("before crop:", shape_before, "after crop:", shape_after, "spacing:",
               np.array(properties["original_spacing"]), "\n")
@@ -169,7 +169,6 @@ class ImageCropper(object):
             if overwrite_existing \
                     or (not os.path.isfile(os.path.join(self.output_folder, "%s.npz" % case_identifier))
                         or not os.path.isfile(os.path.join(self.output_folder, "%s.pkl" % case_identifier))):
-
                 data, seg, properties = self.crop_from_list_of_files(case[:-1], case[-1])
 
                 all_data = np.vstack((data, seg))

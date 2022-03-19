@@ -11,6 +11,7 @@
 #    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
+import os
 from typing import Tuple
 
 import numpy as np
@@ -50,7 +51,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                 self.data_aug_params[
                     'patch_size_for_spatialtransform'],
                 self.data_aug_params,
-                order_seg=3,
+                order_seg=2,
                 deep_supervision_scales=self.deep_supervision_scales,
                 pin_memory=self.pin_memory,
                 use_nondetMultiThreadedAugmenter=False
@@ -164,7 +165,13 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         with autocast():
             output = self.network(data)
             del data
-            l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
+            try:
+                l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
+            except Exception as e:
+                np.savez(os.path.join(self.output_folder, "error_target.npz"), data=[t.detach().cpu().numpy() for t in target])
+                np.savez(os.path.join(self.output_folder, "error_output.npz"), data=[o.detach().cpu().numpy() for o in output])
+                raise e
+
             l = (1 - self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
                 self.consis_weight * rampup_consistency_weight * l_consis
 

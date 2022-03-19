@@ -18,19 +18,19 @@ def compute_sdf(img_gt):
              +inf|x-y|; x out of segmentation
     normalize sdf to [-1,1]
     """
-
+    assert img_gt.min() == 0, "img_gt.min() = " + str(img_gt.min())
     img_gt = img_gt.astype(np.uint8)
     posmask = img_gt.astype(np.bool)
     if posmask.any():
         negmask = ~posmask
         posdis = distance(posmask)
         negdis = distance(negmask)
-        boundary = skimage_seg.find_boundaries(posmask, mode='inner').astype(np.uint8)
+        boundary = skimage_seg.find_boundaries(posmask, mode='outer').astype(np.uint8)
         sdf = (negdis - np.min(negdis)) / (np.max(negdis) - np.min(negdis)) - (posdis - np.min(posdis)) / (
                 np.max(posdis) - np.min(posdis))
         sdf[boundary == 1] = 0
-        # assert np.min(sdf) == -1.0, print(np.min(posdis), np.max(posdis), np.min(negdis), np.max(negdis))
-        # assert np.max(sdf) ==  1.0, print(np.min(posdis), np.min(negdis), np.max(posdis), np.max(negdis))
+        assert np.min(sdf) == -1.0, (np.min(posdis), np.max(posdis), np.min(negdis), np.max(negdis))
+        assert np.max(sdf) ==  1.0, (np.min(posdis), np.min(negdis), np.max(posdis), np.max(negdis))
 
     return sdf
 
@@ -48,8 +48,13 @@ class DTCPreprocessor(GenericPreprocessor):
 
         data, seg, properties = self.resample_and_normalize(data, target_spacing,
                                                             properties, seg, force_separate_z)
-
-        all_data = np.vstack((data, compute_sdf(seg), seg)).astype(np.float32)
+        try:
+            lsf_value = compute_sdf(seg)
+        except AssertionError:
+            np.savez(os.path.join('/', *output_folder_stage.split('/')[:-1], "debug_output", case_identifier + "_seg.npz"), data=seg)
+            np.savez(os.path.join('/', *output_folder_stage.split('/')[:-1], "debug_output", case_identifier + "_img.npz"), data=data)
+            raise AssertionError(case_identifier + " Level Set Function Compute Error.")
+        all_data = np.vstack((data, lsf_value, seg)).astype(np.float32)
 
         # we need to find out where the classes are and sample some random locations
         # let's do 10.000 samples per class
@@ -83,3 +88,6 @@ class DTCPreprocessor(GenericPreprocessor):
         num_threads = [num_threads[0]]  # only stage 0 is needed
         super(DTCPreprocessor, self).run(target_spacings, input_folder_with_cropped_npz, output_folder, data_identifier,
                                          num_threads, force_separate_z)
+
+if __name__ == '__main__':
+    pass
