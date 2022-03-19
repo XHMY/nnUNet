@@ -284,9 +284,8 @@ class nnUNetTrainerV2(nnUNetTrainer):
                 self.optimizer.step()
 
         if wandb_log_image:
-            table = wandb.Table(columns=['ID', 'Image'])
             for b in range(target[0].shape[0]):
-                mask_img = wandb.Image(log_data[b]["image"], masks={
+                wandb.log(wandb.Image(log_data[b]["image"], masks={
                     "predictions": {
                         "mask_data": output[0][b, 0, log_data[b]["max_slice_id"]].detach().cpu().numpy(),
                         "class_labels": {1: "nodule"}
@@ -294,11 +293,8 @@ class nnUNetTrainerV2(nnUNetTrainer):
                     "ground_truth": {
                         "mask_data": log_data[b]["gt"],
                         "class_labels": {1: "nodule"}
-
                     }
-                })
-                table.add_data(log_data[b]["key"], mask_img)
-                wandb.log({"Table" : table}, commit=False)
+                }, caption=log_data[b]["key"]), commit=False)
 
         if run_online_evaluation:
             self.run_online_evaluation(output, target)
