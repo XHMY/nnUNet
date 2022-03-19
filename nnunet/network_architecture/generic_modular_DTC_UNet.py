@@ -245,7 +245,7 @@ class DTCUNetDecoder(nn.Module):
             if deep_supervision and s != 0:
                 assert self.compute_level_set_regression, "deep supervision only makes sense if we compute level set regression"
                 seg_layer = self.props['conv_op'](features_skip, num_classes, 1, 1, 0, 1, 1, False)
-                lsf_layer = self.props['conv_op'](features_skip, num_classes, 1, 1, 0, 1, 1, False)
+                lsf_layer = self.props['conv_op'](features_skip, 1, 1, 1, 0, 1, 1, False)
                 if upscale_logits:
                     upsample = Upsample(scale_factor=cum_upsample[s], mode=upsample_mode)
                     self.deep_supervision_seg_outputs.append(nn.Sequential(seg_layer, upsample))
@@ -255,7 +255,7 @@ class DTCUNetDecoder(nn.Module):
                     self.deep_supervision_lsf_outputs.append(nn.Sequential(lsf_layer, self.tanh))
 
         self.segmentation_output = self.props['conv_op'](features_skip, num_classes, 1, 1, 0, 1, 1, False)
-        self.regression_output = self.props['conv_op'](features_skip, num_classes, 1, 1, 0, 1, 1, False)
+        self.regression_output = self.props['conv_op'](features_skip, 1, 1, 1, 0, 1, 1, False)
 
         self.tus = nn.ModuleList(self.tus)
         self.stages = nn.ModuleList(self.stages)

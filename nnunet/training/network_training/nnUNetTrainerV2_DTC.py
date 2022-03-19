@@ -150,9 +150,9 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         if wandb_log_image:
             log_data = []
             for b in range(target[0].shape[0]):
-                max_slice_id = torch.argmax(torch.sum(target[0][b,0], axis=(1, 2)))
+                max_slice_id = torch.argmax(torch.sum(target[0][b,1], axis=(1, 2)))
                 max_slice_id = int(target[0].shape[-1]/2) if max_slice_id == 0 else max_slice_id
-                log_data.append({"gt": target[0][b, 0, max_slice_id].detach().cpu().numpy(),
+                log_data.append({"gt": target[0][b, 1, max_slice_id].detach().cpu().numpy(),
                                  "image": torch.permute(data[b,:,max_slice_id], (1, 2, 0)).detach().cpu().numpy(),
                                  "key": str(data_dict["keys"][b]),
                                  "max_slice_id": max_slice_id
@@ -197,7 +197,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
             for b in range(target[0].shape[0]):
                 wandb.log({"2d_slice_images": wandb.Image(log_data[b]["image"], masks={
                     "predictions": {
-                        "mask_data": output[0][b, 0, log_data[b]["max_slice_id"]].detach().cpu().numpy(),
+                        "mask_data": output[1][0][b, 1, log_data[b]["max_slice_id"]].detach().cpu().numpy(),
                         "class_labels": {1: "nodule"}
                     },
                     "ground_truth": {
