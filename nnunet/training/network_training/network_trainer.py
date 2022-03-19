@@ -476,7 +476,10 @@ class NetworkTrainer(object):
                 self.network.eval()
                 val_losses = []
                 for b in range(self.num_val_batches_per_epoch):
-                    l = self.run_iteration(self.val_gen, False, True)
+                    if b == self.num_val_batches_per_epoch - 1:
+                        l = self.run_iteration(self.val_gen, False, True, wandb_log_image=True)
+                    else:
+                        l = self.run_iteration(self.val_gen, False, True)
                     val_losses.append(l)
                 self.all_val_losses.append(np.mean(val_losses))
                 wandb.log({"val_loss": self.all_val_losses[-1]}, commit=False)
@@ -643,7 +646,7 @@ class NetworkTrainer(object):
             self.train_loss_MA = self.train_loss_MA_alpha * self.train_loss_MA + (1 - self.train_loss_MA_alpha) * \
                                  self.all_tr_losses[-1]
 
-    def run_iteration(self, data_generator, do_backprop=True, run_online_evaluation=False):
+    def run_iteration(self, data_generator, do_backprop=True, run_online_evaluation=False, wandb_log_image=False):
         data_dict = next(data_generator)
         data = data_dict['data']
         target = data_dict['target']
