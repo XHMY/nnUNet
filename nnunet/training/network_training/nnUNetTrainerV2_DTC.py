@@ -16,6 +16,7 @@ from typing import Tuple
 
 import numpy as np
 import torch
+import wandb
 from torch.cuda.amp import autocast
 
 from nnunet.network_architecture.generic_modular_DTC_UNet import DTCUNet, get_default_network_config
@@ -51,10 +52,11 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                 self.data_aug_params[
                     'patch_size_for_spatialtransform'],
                 self.data_aug_params,
-                order_seg=2,
+                order_seg=1,
                 deep_supervision_scales=self.deep_supervision_scales,
                 pin_memory=self.pin_memory,
-                use_nondetMultiThreadedAugmenter=False
+                use_nondetMultiThreadedAugmenter=False,
+                has_level_set=True
             )
         self.loss = MultipleOutputLoss2DTC(seg_loss=self.loss.loss, weight_factors=self.loss.weight_factors,
                                            consistency=self.consistency_loss_args)
@@ -150,8 +152,8 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         if wandb_log_image:
             log_data = []
             for b in range(target[0].shape[0]):
-                max_slice_id = torch.argmax(torch.sum(target[0][b,1], axis=(1, 2)))
-                max_slice_id = int(target[0].shape[-1]/2) if max_slice_id == 0 else max_slice_id
+                max_slice_id = torch.argmax(torch.sum(target[0][b, 1], axis=(1, 2)))
+                max_slice_id = int(target[0].shape[-1]/2) if (max_slice_id == 0 or max_slice_id == len(target[0][b, 1])) else max_slice_id
                 log_data.append({"gt": target[0][b, 1, max_slice_id].detach().cpu().numpy(),
                                  "image": torch.permute(data[b,:,max_slice_id], (1, 2, 0)).detach().cpu().numpy(),
                                  "key": str(data_dict["keys"][b]),
@@ -176,12 +178,8 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         with autocast():
             output = self.network(data)
             del data
-            try:
-                l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
-            except Exception as e:
-                np.savez(os.path.join(self.output_folder, "error_target.npz"), data=[t.detach().cpu().numpy() for t in target])
-                np.savez(os.path.join(self.output_folder, "error_output.npz"), data=[o.detach().cpu().numpy() for o in output])
-                raise e
+
+            l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
 
             l = (1 - self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
                 self.consis_weight * rampup_consistency_weight * l_consis

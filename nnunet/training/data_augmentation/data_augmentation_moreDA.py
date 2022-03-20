@@ -77,7 +77,8 @@ def get_moreDA_augmentation(dataloader_train, dataloader_val, patch_size, params
         border_mode_seg="constant", border_cval_seg=border_val_seg,
         order_seg=order_seg, random_crop=params.get("random_crop"), p_el_per_sample=params.get("p_eldef"),
         p_scale_per_sample=params.get("p_scale"), p_rot_per_sample=params.get("p_rot"),
-        independent_scale_for_each_axis=params.get("independent_scale_factor_for_each_axis")
+        independent_scale_for_each_axis=params.get("independent_scale_factor_for_each_axis"),
+        has_level_set=has_level_set
     ))
 
     if params.get("dummy_2D"):
@@ -120,7 +121,8 @@ def get_moreDA_augmentation(dataloader_train, dataloader_val, patch_size, params
         else:
             tr_transforms.append(MaskTransform(mask_was_used_for_normalization, mask_idx_in_seg=0, set_outside_to=0))
 
-    tr_transforms.append(RemoveLabelTransform(-1, 0))
+    if not has_level_set:
+        tr_transforms.append(RemoveLabelTransform(-1, 0))
 
     if params.get("move_last_seg_chanel_to_data") is not None and params.get("move_last_seg_chanel_to_data"):
         tr_transforms.append(MoveSegAsOneHotToData(1, params.get("all_segmentation_labels"), 'seg', 'data'))

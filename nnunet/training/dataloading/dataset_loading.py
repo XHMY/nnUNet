@@ -384,7 +384,7 @@ class DataLoader3D(SlimDataLoaderBase):
                                                         (-min(0, bbox_x_lb), max(bbox_x_ub - shape[0], 0)),
                                                         (-min(0, bbox_y_lb), max(bbox_y_ub - shape[1], 0)),
                                                         (-min(0, bbox_z_lb), max(bbox_z_ub - shape[2], 0))),
-                                   'constant', **{'constant_values': -1})
+                                   'constant', **{'constant_values': 0})
             else:
                 seg[j, 0] = np.pad(case_all_data[-1:], ((0, 0),
                                                         (-min(0, bbox_x_lb), max(bbox_x_ub - shape[0], 0)),
@@ -400,6 +400,8 @@ class DataLoader3D(SlimDataLoaderBase):
                                    'constant', **{'constant_values': 0})
 
         # print("seg.shape", seg.shape)
+        # if self.has_level_set:
+        #     assert seg[j, 1].min() == 0 and seg[j, 1].max() <= 1, "seg label min/max error"
         return {'data': data, 'seg': seg, 'properties': case_properties, 'keys': selected_keys}
 
 
