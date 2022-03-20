@@ -239,7 +239,7 @@ class nnUNetTrainerV2(nnUNetTrainer):
             log_data = []
             for b in range(target[0].shape[0]):
                 max_slice_id = torch.argmax(torch.sum(target[0][b,0], axis=(1, 2)))
-                max_slice_id = int(target[0].shape[-1]/2) if max_slice_id == 0 else max_slice_id
+                max_slice_id = int(target[0].shape[-3]/2) if max_slice_id == 0 else max_slice_id
                 log_data.append({"gt": target[0][b, 0, max_slice_id].detach().cpu().numpy(),
                                  "image": torch.permute(data[b,:,max_slice_id], (1, 2, 0)).detach().cpu().numpy(),
                                  "key": str(data_dict["keys"][b]),
