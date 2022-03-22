@@ -48,7 +48,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         self.consis_weight = 0.4
         self.lsf_weight = 0.3
         self.consistency_loss_args = 0.5
-        self.unlabeled_batch_rate = 0.1  # 0 - 1
+        self.unlabeled_batch_rate = 0.02  # 0 - 1
         self.unlabel_gen = None
         # self.max_num_epochs = 1 # For Test Only
 
@@ -75,12 +75,12 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                                   pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
             transforms = Compose([RenameTransform('seg', 'target', True), NumpyToTensor(['data', 'target'], 'float')])
 
-            # self.unlabel_gen = MultiThreadedAugmenter(dl_tr_unlabel, transforms,
-            #                                            self.data_aug_params.get('num_threads'),
-            #                                            self.data_aug_params.get("num_cached_per_thread"),
-            #                                            seeds=range(self.data_aug_params.get('num_threads')),
-            #                                            pin_memory=self.pin_memory)
-            self.unlabel_gen = SingleThreadedAugmenter(dl_tr_unlabel, transforms)
+            self.unlabel_gen = MultiThreadedAugmenter(dl_tr_unlabel, transforms,
+                                                       self.data_aug_params.get('num_threads')/2,
+                                                       self.data_aug_params.get("num_cached_per_thread"),
+                                                       seeds=range(self.data_aug_params.get('num_threads')/2),
+                                                       pin_memory=self.pin_memory)
+            # self.unlabel_gen = SingleThreadedAugmenter(dl_tr_unlabel, transforms)
 
 
 
@@ -221,11 +221,10 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
             del data
 
             if dtc_unsuperviesd:
-                l = self.loss(output, target, dtc_unsuperviesd=True)
+                l = self.loss(output, target, dtc_unsuperviesd=True) * self.consis_weight
             else:
                 l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
-                l = (1 - self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
-                    self.consis_weight * rampup_consistency_weight * l_consis
+                l = l_seg + self.lsf_weight * l_lsf + self.consis_weight * rampup_consistency_weight * l_consis
 
         if do_backprop:
             self.amp_grad_scaler.scale(l).backward()
