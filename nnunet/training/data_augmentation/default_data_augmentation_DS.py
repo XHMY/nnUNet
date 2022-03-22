@@ -34,7 +34,8 @@ except ImportError as ie:
 
 def get_default_augmentation_DTC_DS(dataloader_train, dataloader_val, patch_size, params=default_3D_augmentation_params,
                                     border_val_seg=-1, pin_memory=True,
-                                    seeds_train=None, seeds_val=None, regions=None, deep_supervision_scales=None):
+                                    seeds_train=None, seeds_val=None, regions=None, deep_supervision_scales=None,
+                                    has_level_set=False):
     assert params.get('mirror') is None, "old version of params, use new keyword do_mirror"
     tr_transforms = []
 
@@ -60,7 +61,8 @@ def get_default_augmentation_DTC_DS(dataloader_train, dataloader_val, patch_size
         border_cval_seg=border_val_seg,
         order_seg=1, random_crop=params.get("random_crop"), p_el_per_sample=params.get("p_eldef"),
         p_scale_per_sample=params.get("p_scale"), p_rot_per_sample=params.get("p_rot"),
-        independent_scale_for_each_axis=params.get("independent_scale_factor_for_each_axis")
+        independent_scale_for_each_axis=params.get("independent_scale_factor_for_each_axis"),
+        has_level_set=has_level_set
     ))
     if params.get("dummy_2D") is not None and params.get("dummy_2D"):
         tr_transforms.append(Convert2DTo3DTransform())
@@ -73,11 +75,8 @@ def get_default_augmentation_DTC_DS(dataloader_train, dataloader_val, patch_size
     if params.get("do_mirror"):
         tr_transforms.append(MirrorTransform(params.get("mirror_axes")))
 
-    if params.get("mask_was_used_for_normalization") is not None:
-        mask_was_used_for_normalization = params.get("mask_was_used_for_normalization")
-        tr_transforms.append(MaskTransform(mask_was_used_for_normalization, mask_idx_in_seg=0, set_outside_to=0))
-
-    tr_transforms.append(RemoveLabelTransform(-1, 0))
+    if not has_level_set:
+        tr_transforms.append(RemoveLabelTransform(-1, 0))
 
     tr_transforms.append(RenameTransform('seg', 'target', True))
 

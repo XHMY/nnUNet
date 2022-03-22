@@ -22,6 +22,7 @@ from torch.cuda.amp import autocast
 from nnunet.network_architecture.generic_modular_DTC_UNet import DTCUNet, get_default_network_config
 from nnunet.network_architecture.initialization import InitWeights_He
 from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
+from nnunet.training.data_augmentation.default_data_augmentation_DS import get_default_augmentation_DTC_DS
 from nnunet.training.dataloading.dataset_loading import DataLoader3D
 from nnunet.training.loss_functions.deep_supervision_DTC import MultipleOutputLoss2DTC
 from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
@@ -47,16 +48,13 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
     def initialize(self, training=True, force_load_plans=False):
         super().initialize(training=training, force_load_plans=force_load_plans)
         if training:
-            self.tr_gen, self.val_gen = get_moreDA_augmentation(
+            self.tr_gen, self.val_gen = get_default_augmentation_DTC_DS(
                 self.dl_tr, self.dl_val,
                 self.data_aug_params[
                     'patch_size_for_spatialtransform'],
                 self.data_aug_params,
-                order_seg=1,
                 deep_supervision_scales=self.deep_supervision_scales,
-                pin_memory=self.pin_memory,
-                use_nondetMultiThreadedAugmenter=False,
-                has_level_set=True
+                pin_memory=self.pin_memory
             )
         self.loss = MultipleOutputLoss2DTC(seg_loss=self.loss.loss, weight_factors=self.loss.weight_factors,
                                            consistency=self.consistency_loss_args)
