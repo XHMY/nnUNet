@@ -76,9 +76,9 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
             transforms = Compose([RenameTransform('seg', 'target', True), NumpyToTensor(['data', 'target'], 'float')])
 
             self.unlabel_gen = MultiThreadedAugmenter(dl_tr_unlabel, transforms,
-                                                       self.data_aug_params.get('num_threads')/2,
+                                                       int(self.data_aug_params.get('num_threads')/2.0),
                                                        self.data_aug_params.get("num_cached_per_thread"),
-                                                       seeds=range(self.data_aug_params.get('num_threads')/2),
+                                                       seeds=range(int(self.data_aug_params.get('num_threads')/2.0)),
                                                        pin_memory=self.pin_memory)
             # self.unlabel_gen = SingleThreadedAugmenter(dl_tr_unlabel, transforms)
 
