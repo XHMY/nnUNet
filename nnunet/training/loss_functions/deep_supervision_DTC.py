@@ -71,7 +71,7 @@ class MultipleOutputLoss2DTC(nn.Module):
             if weights[i] != 0:
                 l_seg += weights[i] * self.seg_loss(output[1][i], target[i][:,1:2])
                 l_lsf += weights[i] * self.lsf_loss(output[0][i], target[i][:,0:1])
-                l_consis += weights[i] * self.consistency_loss(output[1][i][:, 1], output[0][i][:, 0])
+                # l_consis += weights[i] * self.consistency_loss(output[1][i][:, 1], output[0][i][:, 0])
         return l_seg, l_lsf, l_consis, self.get_current_consistency_weight()
 
 

@@ -2,12 +2,26 @@ import torch
 
 from nnunet.network_architecture.generic_modular_UNet import get_default_network_config, PlainConvUNet
 from nnunet.network_architecture.initialization import InitWeights_He
+from nnunet.training.data_augmentation.default_data_augmentation_DS import get_default_augmentation_DTC_DS
 from nnunet.training.network_training.nnUNet_variants.architectural_variants.nnUNetTrainerV2_ResencUNet import \
     nnUNetTrainerV2_ResencUNet
 from nnunet.utilities.nd_softmax import softmax_helper
 
 
-class nnUNetTrainerV2_Baseline(nnUNetTrainerV2_ResencUNet):
+class nnUNetTrainerV2_Baseline_defaultDA(nnUNetTrainerV2_ResencUNet):
+
+    def initialize(self, training=True, force_load_plans=False):
+        super().initialize(training, force_load_plans)
+        self.tr_gen, self.val_gen = get_default_augmentation_DTC_DS(
+            self.dl_tr, self.dl_val,
+            self.data_aug_params[
+                'patch_size_for_spatialtransform'],
+            self.data_aug_params,
+            deep_supervision_scales=self.deep_supervision_scales,
+            pin_memory=self.pin_memory,
+            use_nondetMultiThreadedAugmenter=False
+        )
+
     def initialize_network(self):
         if self.threeD:
             cfg = get_default_network_config(3, None, norm_type="in")
@@ -28,3 +42,5 @@ class nnUNetTrainerV2_Baseline(nnUNetTrainerV2_ResencUNet):
         if torch.cuda.is_available():
             self.network.cuda()
         self.network.inference_apply_nonlin = softmax_helper
+
+
