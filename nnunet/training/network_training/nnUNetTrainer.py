@@ -683,7 +683,7 @@ class nnUNetTrainer(NetworkTrainer):
 
         self.network.train(current_mode)
 
-    def run_online_evaluation(self, output, target):
+    def run_online_evaluation(self, output, target, dtc_unsuperviesd=False):
         with torch.no_grad():
             num_classes = output.shape[1]
             output_softmax = softmax_helper(output)
@@ -702,10 +702,16 @@ class nnUNetTrainer(NetworkTrainer):
             fp_hard = fp_hard.sum(0, keepdim=False).detach().cpu().numpy()
             fn_hard = fn_hard.sum(0, keepdim=False).detach().cpu().numpy()
 
-            self.online_eval_foreground_dc.append(list((2 * tp_hard) / (2 * tp_hard + fp_hard + fn_hard + 1e-8)))
-            self.online_eval_tp.append(list(tp_hard))
-            self.online_eval_fp.append(list(fp_hard))
-            self.online_eval_fn.append(list(fn_hard))
+            if dtc_unsuperviesd:
+                self.online_eval_foreground_dc_target.append(list((2 * tp_hard) / (2 * tp_hard + fp_hard + fn_hard + 1e-8)))
+                self.online_eval_tp_target.append(list(tp_hard))
+                self.online_eval_fp_target.append(list(fp_hard))
+                self.online_eval_fn_target.append(list(fn_hard))
+            else:
+                self.online_eval_foreground_dc.append(list((2 * tp_hard) / (2 * tp_hard + fp_hard + fn_hard + 1e-8)))
+                self.online_eval_tp.append(list(tp_hard))
+                self.online_eval_fp.append(list(fp_hard))
+                self.online_eval_fn.append(list(fn_hard))
 
     def finish_online_evaluation(self):
         self.online_eval_tp = np.sum(self.online_eval_tp, 0)

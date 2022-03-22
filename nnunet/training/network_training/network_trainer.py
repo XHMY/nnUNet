@@ -14,6 +14,7 @@
 
 
 from _warnings import warn
+from random import random
 from typing import Tuple
 
 import matplotlib
@@ -281,7 +282,8 @@ class NetworkTrainer(object):
             'lr_scheduler_state_dict': lr_sched_state_dct,
             'plot_stuff': (self.all_tr_losses, self.all_val_losses, self.all_val_losses_tr_mode,
                            self.all_val_eval_metrics),
-            'best_stuff' : (self.best_epoch_based_on_MA_tr_loss, self.best_MA_tr_loss_for_patience, self.best_val_eval_criterion_MA)}
+            'best_stuff': (
+            self.best_epoch_based_on_MA_tr_loss, self.best_MA_tr_loss_for_patience, self.best_val_eval_criterion_MA)}
         if self.amp_grad_scaler is not None:
             save_this['amp_grad_scaler'] = self.amp_grad_scaler.state_dict()
 
@@ -382,7 +384,8 @@ class NetworkTrainer(object):
 
         # load best loss (if present)
         if 'best_stuff' in checkpoint.keys():
-            self.best_epoch_based_on_MA_tr_loss, self.best_MA_tr_loss_for_patience, self.best_val_eval_criterion_MA = checkpoint[
+            self.best_epoch_based_on_MA_tr_loss, self.best_MA_tr_loss_for_patience, self.best_val_eval_criterion_MA = \
+            checkpoint[
                 'best_stuff']
 
         # after the training is done, the epoch is incremented one more time in my old code. This results in
@@ -414,10 +417,13 @@ class NetworkTrainer(object):
 
     def run_training(self, enable_dtc=False):
         if not torch.cuda.is_available():
-            self.print_to_log_file("WARNING!!! You are attempting to run training on a CPU (torch.cuda.is_available() is False). This can be VERY slow!")
+            self.print_to_log_file(
+                "WARNING!!! You are attempting to run training on a CPU (torch.cuda.is_available() is False). This can be VERY slow!")
 
         _ = self.tr_gen.next()
         _ = self.val_gen.next()
+        if enable_dtc:
+            _ = self.unlabel_gen.next()
 
         # data_train = self.tr_gen.next()
         # np.savez(os.path.join(self.output_folder, 'data_train_image.npz'), data=data_train['data'])
@@ -428,7 +434,7 @@ class NetworkTrainer(object):
 
         self._maybe_init_amp()
 
-        maybe_mkdir_p(self.output_folder)        
+        maybe_mkdir_p(self.output_folder)
         self.plot_network_architecture()
 
         if cudnn.benchmark and cudnn.deterministic:
@@ -443,6 +449,7 @@ class NetworkTrainer(object):
             self.print_to_log_file("\nepoch: ", self.epoch)
             epoch_start_time = time()
             train_losses_epoch = []
+            train_unlabeled_losses_epoch = []
 
             # train one epoch
             self.network.train()
@@ -451,16 +458,22 @@ class NetworkTrainer(object):
             if self.use_progress_bar:
                 with trange(self.num_batches_per_epoch) as tbar:
                     for b in tbar:
-                        tbar.set_description("Epoch {}/{}".format(self.epoch+1, self.max_num_epochs))
+                        tbar.set_description("Epoch {}/{}".format(self.epoch + 1, self.max_num_epochs))
 
                         l = self.run_iteration(self.tr_gen, True)
 
                         tbar.set_postfix(loss=l)
                         train_losses_epoch.append(l)
+                        if enable_dtc and random() > (1 - self.unlabeled_batch_rate):
+                            l = self.run_iteration(self.unlabel_gen, True, dtc_unsuperviesd=True)
+                            train_unlabeled_losses_epoch.append(l)
             else:
                 for _ in range(self.num_batches_per_epoch):
                     l = self.run_iteration(self.tr_gen, True)
                     train_losses_epoch.append(l)
+                    if enable_dtc and random() > (1 - self.unlabeled_batch_rate):
+                        l = self.run_iteration(self.unlabel_gen, True, dtc_unsuperviesd=True)
+                        train_unlabeled_losses_epoch.append(l)
 
             self.all_tr_losses.append(np.mean(train_losses_epoch))
             self.print_to_log_file("train loss : %.4f" % self.all_tr_losses[-1])
@@ -468,8 +481,8 @@ class NetworkTrainer(object):
             if enable_dtc:
                 wandb.log({"train_loss_seg": np.mean(self.loss_detail_log_sum["seg_loss"]),
                            "train_loss_lsf": np.mean(self.loss_detail_log_sum["lsf_loss"]),
-                           "train_loss_consis": np.mean(self.loss_detail_log_sum["consis_loss"])}, commit=False)
-            if enable_dtc:
+                           "train_loss_consis": np.mean(self.loss_detail_log_sum["consis_loss"]),
+                           "train_unlabeled_consis_loss": np.mean(train_unlabeled_losses_epoch)}, commit=False)
                 self.loss_detail_log_sum = {"seg_loss": [], "lsf_loss": [], "consis_loss": []}
             with torch.no_grad():
                 # validation with train=False
@@ -481,6 +494,8 @@ class NetworkTrainer(object):
                     else:
                         l = self.run_iteration(self.val_gen, False, True)
                     val_losses.append(l)
+                    if enable_dtc:
+                        self.run_iteration(self.unlabel_gen, False, True, dtc_unsuperviesd=True)
                 self.all_val_losses.append(np.mean(val_losses))
                 wandb.log({"val_loss": self.all_val_losses[-1]}, commit=False)
                 if enable_dtc:
@@ -511,7 +526,8 @@ class NetworkTrainer(object):
 
             self.epoch += 1
             self.print_to_log_file("This epoch took %f s\n" % (epoch_end_time - epoch_start_time))
-            wandb.log({"epoch_time_spend": epoch_end_time - epoch_start_time}, commit=True) # commit=True is important here! finish this step log.
+            wandb.log({"epoch_time_spend": epoch_end_time - epoch_start_time},
+                      commit=True)  # commit=True is important here! finish this step log.
 
         self.epoch -= 1  # if we don't do this we can get a problem with loading model_final_checkpoint.
 
@@ -590,12 +606,12 @@ class NetworkTrainer(object):
             # check if the current epoch is the best one according to moving average of validation criterion. If so
             # then save 'best' model
             # Do not use this for validation. This is intended for test set prediction only.
-            #self.print_to_log_file("current best_val_eval_criterion_MA is %.4f0" % self.best_val_eval_criterion_MA)
-            #self.print_to_log_file("current val_eval_criterion_MA is %.4f" % self.val_eval_criterion_MA)
+            # self.print_to_log_file("current best_val_eval_criterion_MA is %.4f0" % self.best_val_eval_criterion_MA)
+            # self.print_to_log_file("current val_eval_criterion_MA is %.4f" % self.val_eval_criterion_MA)
 
             if self.val_eval_criterion_MA > self.best_val_eval_criterion_MA:
                 self.best_val_eval_criterion_MA = self.val_eval_criterion_MA
-                #self.print_to_log_file("saving best epoch checkpoint...")
+                # self.print_to_log_file("saving best epoch checkpoint...")
                 if self.save_best_checkpoint: self.save_checkpoint(join(self.output_folder, "model_best.model"))
 
             # Now see if the moving average of the train loss has improved. If yes then reset patience, else
@@ -603,23 +619,23 @@ class NetworkTrainer(object):
             if self.train_loss_MA + self.train_loss_MA_eps < self.best_MA_tr_loss_for_patience:
                 self.best_MA_tr_loss_for_patience = self.train_loss_MA
                 self.best_epoch_based_on_MA_tr_loss = self.epoch
-                #self.print_to_log_file("New best epoch (train loss MA): %03.4f" % self.best_MA_tr_loss_for_patience)
+                # self.print_to_log_file("New best epoch (train loss MA): %03.4f" % self.best_MA_tr_loss_for_patience)
             else:
                 pass
-                #self.print_to_log_file("No improvement: current train MA %03.4f, best: %03.4f, eps is %03.4f" %
+                # self.print_to_log_file("No improvement: current train MA %03.4f, best: %03.4f, eps is %03.4f" %
                 #                       (self.train_loss_MA, self.best_MA_tr_loss_for_patience, self.train_loss_MA_eps))
 
             # if patience has reached its maximum then finish training (provided lr is low enough)
             if self.epoch - self.best_epoch_based_on_MA_tr_loss > self.patience:
                 if self.optimizer.param_groups[0]['lr'] > self.lr_threshold:
-                    #self.print_to_log_file("My patience ended, but I believe I need more time (lr > 1e-6)")
+                    # self.print_to_log_file("My patience ended, but I believe I need more time (lr > 1e-6)")
                     self.best_epoch_based_on_MA_tr_loss = self.epoch - self.patience // 2
                 else:
-                    #self.print_to_log_file("My patience ended")
+                    # self.print_to_log_file("My patience ended")
                     continue_training = False
             else:
                 pass
-                #self.print_to_log_file(
+                # self.print_to_log_file(
                 #    "Patience: %d/%d" % (self.epoch - self.best_epoch_based_on_MA_tr_loss, self.patience))
 
         return continue_training
@@ -654,10 +670,10 @@ class NetworkTrainer(object):
         if wandb_log_image:
             log_data = []
             for b in range(target[0].shape[0]):
-                max_slice_id = torch.argmax(torch.sum(target[0][b,0], axis=(1, 2)))
-                max_slice_id = int(target[0].shape[-1]/2) if max_slice_id == 0 else max_slice_id
+                max_slice_id = torch.argmax(torch.sum(target[0][b, 0], axis=(1, 2)))
+                max_slice_id = int(target[0].shape[-1] / 2) if max_slice_id == 0 else max_slice_id
                 log_data.append({"gt": target[0][b, 0, max_slice_id].detach().cpu().numpy(),
-                                 "image": torch.permute(data[b,:,max_slice_id], (1, 2, 0)).detach().cpu().numpy(),
+                                 "image": torch.permute(data[b, :, max_slice_id], (1, 2, 0)).detach().cpu().numpy(),
                                  "key": str(data_dict["keys"][b]),
                                  "max_slice_id": max_slice_id
                                  })
@@ -782,31 +798,30 @@ class NetworkTrainer(object):
         plt.close()
         return log_lrs, losses
 
-
-    def load_pretrained_weights(self,fname):                                    
-        saved_model = torch.load(fname)                                         
-        pretrained_dict = saved_model['state_dict']                             
-        model_dict = self.network.state_dict()                                  
-        fine_tune = True                                                        
-        for key, _ in model_dict.items():                                       
-            if ('conv_blocks' in key):                                           
+    def load_pretrained_weights(self, fname):
+        saved_model = torch.load(fname)
+        pretrained_dict = saved_model['state_dict']
+        model_dict = self.network.state_dict()
+        fine_tune = True
+        for key, _ in model_dict.items():
+            if ('conv_blocks' in key):
                 if (key in pretrained_dict) and (model_dict[key].shape == pretrained_dict[key].shape):
-                    pass                                                    
-                else:                                                            
-                    fine_tune = False                                            
-                    break                                                        
-        # filter unnecessary keys                                               
-        if fine_tune:                                                           
-            pretrained_dict = {k: v for k, v in pretrained_dict.items() if      
-                        (k in model_dict) and (model_dict[k].shape == pretrained_dict[k].shape)}
+                    pass
+                else:
+                    fine_tune = False
+                    break
+                    # filter unnecessary keys
+        if fine_tune:
+            pretrained_dict = {k: v for k, v in pretrained_dict.items() if
+                               (k in model_dict) and (model_dict[k].shape == pretrained_dict[k].shape)}
             # 2. overwrite entries in the existing state dict                       
-            model_dict.update(pretrained_dict)                                  
+            model_dict.update(pretrained_dict)
             # print(model_dict)                                                     
-            print("############################################### Loading pre-trained Models Genesis from ",fname)
+            print("############################################### Loading pre-trained Models Genesis from ", fname)
             print("Below is the list of overlapping blocks in pre-trained Models Genesis and nnUNet architecture:")
-            for key, _ in pretrained_dict.items():                              
-                print(key)                                                      
-            print("############################################### Done")                                                            
-            self.network.load_state_dict(model_dict)                            
-        else:                                                                   
+            for key, _ in pretrained_dict.items():
+                print(key)
+            print("############################################### Done")
+            self.network.load_state_dict(model_dict)
+        else:
             print('############################################### Training from scratch')

@@ -54,7 +54,11 @@ class MultipleOutputLoss2DTC(nn.Module):
 
         return self.consistency * sigmoid_rampup(self.epoch, self.consistency_rampup)
 
-    def forward(self, output, target):
+    def forward(self, output, target, dtc_unsuperviesd=False):
+        if dtc_unsuperviesd:
+            l_consis = self.consistency_loss(output[1][0][:, 1], output[0][0][:, 0])
+            return l_consis * self.get_current_consistency_weight()
+
         assert isinstance(output, (tuple, list)), "x must be either tuple or list"
         assert isinstance(target, (tuple, list)), "y must be either tuple or list"
         assert len(output[0]) == len(output[1]), "deep supervision output must equal length"

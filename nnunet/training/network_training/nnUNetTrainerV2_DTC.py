@@ -12,18 +12,23 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 import os
+from os.path import join
 from typing import Tuple
 
 import numpy as np
 import torch
 import wandb
+from batchgenerators.dataloading.multi_threaded_augmenter import MultiThreadedAugmenter
+from batchgenerators.dataloading.single_threaded_augmenter import SingleThreadedAugmenter
+from batchgenerators.transforms.abstract_transforms import Compose
+from batchgenerators.transforms.utility_transforms import NumpyToTensor, RenameTransform
 from torch.cuda.amp import autocast
 
 from nnunet.network_architecture.generic_modular_DTC_UNet import DTCUNet, get_default_network_config
 from nnunet.network_architecture.initialization import InitWeights_He
 from nnunet.training.data_augmentation.data_augmentation_moreDA import get_moreDA_augmentation
 from nnunet.training.data_augmentation.default_data_augmentation_DS import get_default_augmentation_DTC_DS
-from nnunet.training.dataloading.dataset_loading import DataLoader3D
+from nnunet.training.dataloading.dataset_loading import DataLoader3D, load_dataset, unpack_dataset
 from nnunet.training.loss_functions.deep_supervision_DTC import MultipleOutputLoss2DTC
 from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
 from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
@@ -43,6 +48,8 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         self.consis_weight = 0.4
         self.lsf_weight = 0.3
         self.consistency_loss_args = 0.5
+        self.unlabeled_batch_rate = 0.1  # 0 - 1
+        self.unlabel_gen = None
         # self.max_num_epochs = 1 # For Test Only
 
     def initialize(self, training=True, force_load_plans=False):
@@ -54,10 +61,36 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                     'patch_size_for_spatialtransform'],
                 self.data_aug_params,
                 deep_supervision_scales=self.deep_supervision_scales,
-                pin_memory=self.pin_memory
+                pin_memory=self.pin_memory,
+                has_level_set=True
             )
+
+            # No Label Data for DTC
+            folder_with_preprocessed_unlabel_data = join(os.environ['nnUNet_preprocessed'], "Task557_LungNoduleGE",
+                                                        "nnUNetData_plans_v2.1_stage0")
+            unpack_dataset(folder_with_preprocessed_unlabel_data)
+            unlabel_dataset = load_dataset(folder_with_preprocessed_unlabel_data)
+            dl_tr_unlabel = DataLoader3D(unlabel_dataset, self.patch_size, self.patch_size, self.batch_size, False,
+                                  oversample_foreground_percent=0.75,
+                                  pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
+            transforms = Compose([RenameTransform('seg', 'target', True), NumpyToTensor(['data', 'target'], 'float')])
+
+            # self.unlabel_gen = MultiThreadedAugmenter(dl_tr_unlabel, transforms,
+            #                                            self.data_aug_params.get('num_threads'),
+            #                                            self.data_aug_params.get("num_cached_per_thread"),
+            #                                            seeds=range(self.data_aug_params.get('num_threads')),
+            #                                            pin_memory=self.pin_memory)
+            self.unlabel_gen = SingleThreadedAugmenter(dl_tr_unlabel, transforms)
+
+
+
         self.loss = MultipleOutputLoss2DTC(seg_loss=self.loss.loss, weight_factors=self.loss.weight_factors,
                                            consistency=self.consistency_loss_args)
+
+        self.online_eval_foreground_dc_target = []
+        self.online_eval_tp_target = []
+        self.online_eval_fp_target = []
+        self.online_eval_fn_target = []
 
     def initialize_network(self):
         if self.threeD:
@@ -88,7 +121,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         self.deep_supervision_scales = [[1, 1, 1]] + list(list(i) for i in 1 / np.cumprod(
             np.vstack(self.net_num_pool_op_kernel_sizes[1:]), axis=0))[:-1]
 
-    def run_online_evaluation(self, output, target):
+    def run_online_evaluation(self, output, target, dtc_unsuperviesd=False):
         """
         due to deep supervision the return value and the reference are now lists of tensors. We only need the full
         resolution output because this is what we are interested in in the end. The others are ignored
@@ -96,7 +129,10 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         :param target:
         :return:
         """
-        return nnUNetTrainer.run_online_evaluation(self, output[1][0], target[0][:,1::1])
+        if dtc_unsuperviesd:
+            return nnUNetTrainer.run_online_evaluation(self, output[1][0], target, dtc_unsuperviesd=True)
+        else:
+            return nnUNetTrainer.run_online_evaluation(self, output[1][0], target[0][:,1::1])
 
     def predict_preprocessed_data_return_seg_and_softmax(self, data: np.ndarray, do_mirroring: bool = True,
                                                          mirror_axes: Tuple[int] = None,
@@ -132,7 +168,8 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
         self.loss.set_epoch(self.epoch)
         return ret
 
-    def run_iteration(self, data_generator, do_backprop=True, run_online_evaluation=False, wandb_log_image=False):
+    def run_iteration(self, data_generator, do_backprop=True, run_online_evaluation=False,
+                      wandb_log_image=False, dtc_unsuperviesd=False):
         """
         gradient clipping improves training stability
 
@@ -177,10 +214,12 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
             output = self.network(data)
             del data
 
-            l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
-
-            l = (1 - self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
-                self.consis_weight * rampup_consistency_weight * l_consis
+            if dtc_unsuperviesd:
+                l = self.loss(output, target, dtc_unsuperviesd=True)
+            else:
+                l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
+                l = (1 - self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
+                    self.consis_weight * rampup_consistency_weight * l_consis
 
         if do_backprop:
             self.amp_grad_scaler.scale(l).backward()
@@ -203,11 +242,12 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                 }, caption=log_data[b]["key"])}, commit=False)
 
         if run_online_evaluation:
-            self.run_online_evaluation(output, target)
+            self.run_online_evaluation(output, target, dtc_unsuperviesd=dtc_unsuperviesd)
 
-        self.loss_detail_log_sum["seg_loss"].append(l_seg.detach().cpu().numpy())
-        self.loss_detail_log_sum["lsf_loss"].append(l_lsf.detach().cpu().numpy())
-        self.loss_detail_log_sum["consis_loss"].append(l_consis.detach().cpu().numpy())
+        if not dtc_unsuperviesd:
+            self.loss_detail_log_sum["seg_loss"].append(l_seg.detach().cpu().numpy())
+            self.loss_detail_log_sum["lsf_loss"].append(l_lsf.detach().cpu().numpy())
+            self.loss_detail_log_sum["consis_loss"].append(l_consis.detach().cpu().numpy())
 
         del target
 
@@ -246,3 +286,25 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                               has_level_set=True, oversample_foreground_percent=self.oversample_foreground_percent,
                               pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
         return dl_tr, dl_val
+
+    def finish_online_evaluation(self):
+        super().finish_online_evaluation()
+
+        self.online_eval_tp_target = np.sum(self.online_eval_tp_target, 0)
+        self.online_eval_fp_target = np.sum(self.online_eval_fp_target, 0)
+        self.online_eval_fn_target = np.sum(self.online_eval_fn_target, 0)
+
+        global_dc_per_class = [i for i in [2 * i / (2 * i + j + k) for i, j, k in
+                                           zip(self.online_eval_tp_target, self.online_eval_fp_target, self.online_eval_fn_target)]
+                               if not np.isnan(i)]
+        recall_per_class = [i for i in [tp / (tp + fn) for tp, fn in
+                                           zip(self.online_eval_tp_target, self.online_eval_fn_target)] if not np.isnan(i)]
+        precision_per_class = [i for i in [tp / (tp + fp) for tp, fp in
+                                        zip(self.online_eval_tp_target, self.online_eval_fp_target)] if not np.isnan(i)]
+        wandb.log({'Target Average Dice (estimate)': np.mean(global_dc_per_class),
+                   'Target Average Recall (estimate)': np.mean(recall_per_class),
+                   'Target Average Precision (estimate)': np.mean(precision_per_class)}, commit=False)
+
+        self.online_eval_tp_target = []
+        self.online_eval_fp_target = []
+        self.online_eval_fn_target = []
