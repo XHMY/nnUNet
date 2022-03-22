@@ -112,6 +112,12 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
             self.network.cuda()
         self.network.inference_apply_nonlin = softmax_helper
 
+    def initialize_optimizer_and_scheduler(self):
+        assert self.network is not None, "self.initialize_network must be called first"
+        self.optimizer = torch.optim.SGD(self.network.parameters(), self.initial_lr, weight_decay=self.weight_decay,
+                                         momentum=0.95, nesterov=True)
+        self.lr_scheduler = None
+
     def setup_DA_params(self):
         """
         net_num_pool_op_kernel_sizes is different in resunet
