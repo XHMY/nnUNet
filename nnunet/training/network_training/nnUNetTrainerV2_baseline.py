@@ -3,6 +3,7 @@ import torch
 from nnunet.network_architecture.generic_modular_UNet import get_default_network_config, PlainConvUNet
 from nnunet.network_architecture.initialization import InitWeights_He
 from nnunet.training.data_augmentation.default_data_augmentation_DS import get_default_augmentation_DTC_DS
+from nnunet.training.network_training.nnUNetTrainer import nnUNetTrainer
 from nnunet.training.network_training.nnUNet_variants.architectural_variants.nnUNetTrainerV2_ResencUNet import \
     nnUNetTrainerV2_ResencUNet
 from nnunet.utilities.nd_softmax import softmax_helper
@@ -18,9 +19,14 @@ class nnUNetTrainerV2_Baseline_defaultDA(nnUNetTrainerV2_ResencUNet):
                 'patch_size_for_spatialtransform'],
             self.data_aug_params,
             deep_supervision_scales=self.deep_supervision_scales,
-            pin_memory=self.pin_memory,
-            use_nondetMultiThreadedAugmenter=False
+            pin_memory=self.pin_memory
         )
+
+    def initialize_optimizer_and_scheduler(self):
+        assert self.network is not None, "self.initialize_network must be called first"
+        self.optimizer = torch.optim.SGD(self.network.parameters(), self.initial_lr, weight_decay=self.weight_decay,
+                                         momentum=0.95, nesterov=True)
+        self.lr_scheduler = None
 
     def initialize_network(self):
         if self.threeD:
@@ -44,3 +50,6 @@ class nnUNetTrainerV2_Baseline_defaultDA(nnUNetTrainerV2_ResencUNet):
         self.network.inference_apply_nonlin = softmax_helper
 
 
+    def on_epoch_end(self):
+        continue_training = nnUNetTrainer.on_epoch_end(self)
+        return continue_training and self.epoch < self.max_num_epochs
