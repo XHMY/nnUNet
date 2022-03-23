@@ -45,9 +45,9 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                  unpack_data=True, deterministic=True, fp16=False):
         super().__init__(plans_file, fold, output_folder, dataset_directory, batch_dice, stage, unpack_data,
                          deterministic, fp16)
-        self.consis_weight = 0.6
-        self.lsf_weight = 0.6
-        self.consistency_loss_args = 0.7
+        self.consis_weight = 0.4
+        self.lsf_weight = 0.3
+        self.consistency_loss_args = 0.5
         self.unlabeled_batch_rate = 0.1  # 0 - 1
         self.unlabel_gen = None
         self.initial_lr = 1e-2
@@ -225,7 +225,8 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                 l = self.loss(output, target, dtc_unsuperviesd=True)  # do not * self.consis_weight
             else:
                 l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
-                l = l_seg + self.lsf_weight * l_lsf + self.consis_weight * rampup_consistency_weight * l_consis
+                l = (1 - self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
+                    self.consis_weight * rampup_consistency_weight * l_consis
 
         if do_backprop:
             self.amp_grad_scaler.scale(l).backward()
