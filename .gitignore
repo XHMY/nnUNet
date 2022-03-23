@@ -114,3 +114,5 @@ ENV/
 *.model
 
 /nnunet/run/wandb/
+nnunet/run/.DS_Store
+nnunet/.DS_Store
