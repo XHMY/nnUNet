@@ -494,7 +494,7 @@ class NetworkTrainer(object):
                     else:
                         l = self.run_iteration(self.val_gen, False, True)
                     val_losses.append(l)
-                    if enable_dtc and random() > 0.9:
+                    if b >= self.num_val_batches_per_epoch - 10:
                         self.run_iteration(self.unlabel_gen, False, True, dtc_unsuperviesd=True)
                 self.all_val_losses.append(np.mean(val_losses))
                 wandb.log({"val_loss": self.all_val_losses[-1]}, commit=False)
