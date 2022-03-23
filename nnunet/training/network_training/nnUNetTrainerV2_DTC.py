@@ -45,11 +45,12 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                  unpack_data=True, deterministic=True, fp16=False):
         super().__init__(plans_file, fold, output_folder, dataset_directory, batch_dice, stage, unpack_data,
                          deterministic, fp16)
-        self.consis_weight = 0.4
-        self.lsf_weight = 0.3
-        self.consistency_loss_args = 0.5
-        self.unlabeled_batch_rate = 0.02  # 0 - 1
+        self.consis_weight = 0.6
+        self.lsf_weight = 0.6
+        self.consistency_loss_args = 0.7
+        self.unlabeled_batch_rate = 0.1  # 0 - 1
         self.unlabel_gen = None
+        self.initial_lr = 1e-2
         # self.max_num_epochs = 1 # For Test Only
 
     def initialize(self, training=True, force_load_plans=False):
@@ -71,7 +72,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
             unpack_dataset(folder_with_preprocessed_unlabel_data)
             unlabel_dataset = load_dataset(folder_with_preprocessed_unlabel_data)
             dl_tr_unlabel = DataLoader3D(unlabel_dataset, self.patch_size, self.patch_size, self.batch_size, False,
-                                  oversample_foreground_percent=0.75,
+                                  oversample_foreground_percent=0.60,
                                   pad_mode="constant", pad_sides=self.pad_all_sides, memmap_mode='r')
             transforms = Compose([RenameTransform('seg', 'target', True), NumpyToTensor(['data', 'target'], 'float')])
 
@@ -221,7 +222,7 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
             del data
 
             if dtc_unsuperviesd:
-                l = self.loss(output, target, dtc_unsuperviesd=True) * self.consis_weight
+                l = self.loss(output, target, dtc_unsuperviesd=True)  # do not * self.consis_weight
             else:
                 l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
                 l = l_seg + self.lsf_weight * l_lsf + self.consis_weight * rampup_consistency_weight * l_consis
