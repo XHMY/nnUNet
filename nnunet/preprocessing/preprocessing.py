@@ -369,6 +369,9 @@ class GenericPreprocessor(object):
         :param force_separate_z: None
         :return:
         """
+        target_spacings = [target_spacings[0]]  # only stage 0 is needed
+        num_threads = [num_threads[0]]  # only stage 0 is needed
+
         print("Initializing to run preprocessing")
         print("npz folder:", input_folder_with_cropped_npz)
         print("output_folder:", output_folder)

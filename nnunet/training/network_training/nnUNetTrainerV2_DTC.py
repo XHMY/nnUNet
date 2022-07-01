@@ -42,11 +42,11 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
     """
 
     def __init__(self, plans_file, fold, output_folder=None, dataset_directory=None, batch_dice=True, stage=None,
-                 unpack_data=True, deterministic=True, fp16=False):
+                 unpack_data=True, deterministic=True, fp16=False, lsf_weight=0.5, consis_weight=0.4):
         super().__init__(plans_file, fold, output_folder, dataset_directory, batch_dice, stage, unpack_data,
                          deterministic, fp16)
-        self.consis_weight = 0.4
-        self.lsf_weight = 0.3
+        self.consis_weight = consis_weight
+        self.lsf_weight = lsf_weight
         self.consistency_loss_args = 0.5
         self.unlabeled_batch_rate = 0.02  # 0 - 1
         # self.max_num_epochs = 1 # For Test Only
@@ -223,9 +223,9 @@ class nnUNetTrainerV2DTC(nnUNetTrainerV2):
                 l = self.loss(output, target, dtc_unsuperviesd=True) * self.consis_weight
             else:
                 l_seg, l_lsf, l_consis, rampup_consistency_weight = self.loss(output, target)
-                # l = (1 - self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
-                #     self.consis_weight * rampup_consistency_weight * l_consis
-                l = l_seg + self.lsf_weight * l_lsf + self.consis_weight * rampup_consistency_weight * l_consis
+                l = (1 - self.consis_weight) * ((1 - self.lsf_weight) * l_seg + self.lsf_weight * l_lsf) + \
+                    self.consis_weight * rampup_consistency_weight * l_consis
+                # l = l_seg + self.lsf_weight * l_lsf + self.consis_weight * rampup_consistency_weight * l_consis
 
         if do_backprop:
             self.amp_grad_scaler.scale(l).backward()

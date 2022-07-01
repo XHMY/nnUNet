@@ -8,7 +8,7 @@ from nnunet.configuration import default_num_threads
 from nnunet.preprocessing.preprocessing import GenericPreprocessor
 
 
-def compute_sdf(img_gt):
+def compute_sdf(img_gt, boundary_mode='outer'):
     """
     compute the signed distance map of binary mask
     input: segmentation, shape = (x, y, z)
@@ -25,7 +25,7 @@ def compute_sdf(img_gt):
         negmask = ~posmask
         posdis = distance(posmask)
         negdis = distance(negmask)
-        boundary = skimage_seg.find_boundaries(posmask, mode='outer').astype(np.uint8)
+        boundary = skimage_seg.find_boundaries(posmask, mode=boundary_mode).astype(np.uint8)
         sdf = (negdis - np.min(negdis)) / (np.max(negdis) - np.min(negdis)) - (posdis - np.min(posdis)) / (
                 np.max(posdis) - np.min(posdis))
         sdf[boundary == 1] = 0

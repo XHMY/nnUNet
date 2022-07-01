@@ -91,6 +91,8 @@ def main():
                         help='path to nnU-Net checkpoint file to be used as pretrained model (use .model '
                              'file, for example model_final_checkpoint.model). Will only be used when actually training. '
                              'Optional. Beta. Use with caution.')
+    parser.add_argument('-lsf_weight', type=float, required=False, default=0.5, help="a")
+    parser.add_argument('-consis_weight', type=float, required=False, default=0.4, help="b")
 
     # Add an argument for pre-trained weights
     parser.add_argument("-w", required=False, default=None, help="Load pre-trained Models Genesis") 
@@ -158,10 +160,17 @@ def main():
 
     if weights != None:
         output_folder_name += "_ModelsGenesis"
-    trainer = trainer_class(plans_file, fold, output_folder=output_folder_name, dataset_directory=dataset_directory,
+    if network_trainer == "nnUNetTrainerV2DTC":
+        trainer = trainer_class(plans_file, fold, output_folder=output_folder_name, dataset_directory=dataset_directory,
                             batch_dice=batch_dice, stage=stage, unpack_data=decompress_data,
                             deterministic=deterministic,
-                            fp16=run_mixed_precision)
+                            fp16=run_mixed_precision,
+                            lsf_weight=args.lsf_weight, consis_weight=args.consis_weight)
+    else:
+        trainer = trainer_class(plans_file, fold, output_folder=output_folder_name, dataset_directory=dataset_directory,
+                                batch_dice=batch_dice, stage=stage, unpack_data=decompress_data,
+                                deterministic=deterministic,
+                                fp16=run_mixed_precision)
     if args.disable_saving:
         trainer.save_final_checkpoint = False # whether or not to save the final checkpoint
         trainer.save_best_checkpoint = False  # whether or not to save the best checkpoint according to
