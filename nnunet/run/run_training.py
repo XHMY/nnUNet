@@ -93,6 +93,7 @@ def main():
                              'Optional. Beta. Use with caution.')
     parser.add_argument('-lsf_weight', type=float, required=False, default=0.5, help="a")
     parser.add_argument('-consis_weight', type=float, required=False, default=0.4, help="b")
+    parser.add_argument('-exp_name', type=str, required=False, default="", help="experiment name (empty string by default)")
 
     # Add an argument for pre-trained weights
     parser.add_argument("-w", required=False, default=None, help="Load pre-trained Models Genesis") 
@@ -144,7 +145,7 @@ def main():
     #     raise ValueError("force_separate_z must be None, True or False. Given: %s" % force_separate_z)
 
     plans_file, output_folder_name, dataset_directory, batch_dice, stage, \
-    trainer_class = get_default_configuration(network, task, network_trainer, plans_identifier)
+    trainer_class = get_default_configuration(network, task, network_trainer, plans_identifier, args.exp_name)
 
     if trainer_class is None:
         raise RuntimeError("Could not find trainer class in nnunet.training.network_training")
