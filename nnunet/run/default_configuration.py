@@ -33,7 +33,7 @@ def get_configuration_from_output_folder(folder):
 
 def get_default_configuration(network, task, network_trainer, plans_identifier=default_plans_identifier,
                               search_in=(nnunet.__path__[0], "training", "network_training"),
-                              base_module='nnunet.training.network_training'):
+                              base_module='nnunet.training.network_training', exp_name=""):
     assert network in ['2d', '3d_lowres', '3d_fullres', '3d_cascade_fullres'], \
         "network can only be one of the following: \'2d\', \'3d_lowres\', \'3d_fullres\', \'3d_cascade_fullres\'"
 
@@ -60,6 +60,8 @@ def get_default_configuration(network, task, network_trainer, plans_identifier=d
                                                 current_module=base_module)
 
     output_folder_name = join(network_training_output_dir, network, task, network_trainer + "__" + plans_identifier)
+    if exp_name != "":
+        output_folder_name += "__" + exp_name
 
     print("###############################################")
     print("I am running the following nnUNet: %s" % network)
