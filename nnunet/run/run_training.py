@@ -145,7 +145,7 @@ def main():
     #     raise ValueError("force_separate_z must be None, True or False. Given: %s" % force_separate_z)
 
     plans_file, output_folder_name, dataset_directory, batch_dice, stage, \
-    trainer_class = get_default_configuration(network, task, network_trainer, plans_identifier, args.exp_name)
+    trainer_class = get_default_configuration(network, task, network_trainer, plans_identifier, exp_name=args.exp_name)
 
     if trainer_class is None:
         raise RuntimeError(f"Could not find trainer class in nnunet.training.network_training: {str(network_trainer)}")
