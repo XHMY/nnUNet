@@ -13,6 +13,7 @@
 #    limitations under the License.
 from collections import OrderedDict
 import SimpleITK as sitk
+import numpy as np
 from batchgenerators.utilities.file_and_folder_operations import *
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
@@ -63,12 +64,25 @@ if __name__ == "__main__":
         for i in range(1, len(res_list)):
             res_list[0] += res_list[i]
         res_list[0] = (res_list[0] > 0)
-        mask_sum = sitk.GetArrayViewFromImage(res_list[0]).sum()
-        if mask_sum > 9:
-            sitk.WriteImage(res_list[0], out_fname)
-        else:
+
+        cc_filter = sitk.ConnectedComponentImageFilter()
+        cc_filter.SetFullyConnected(True)
+        output_mask = cc_filter.Execute(res_list[0])
+        lss_filter = sitk.LabelShapeStatisticsImageFilter()
+        lss_filter.Execute(output_mask)
+        num_connected_label = cc_filter.GetObjectCount()  # 获取连通域个数
+        if num_connected_label == 0:
             raw_data.remove(f"{raw_data[0][:-13]}{seg_name}.mhd")
-            remove_list.append({"removed_seg_name": seg_name, "mask_sum": mask_sum})
+            remove_list.append({"removed_seg_name": seg_name, "diameter(mm)": "[]"})
+        else:
+            m = np.array(res_list[0].TransformIndexToPhysicalPoint((0, 0, 0))) - np.array(
+                res_list[0].TransformIndexToPhysicalPoint((1, 1, 1))) # 获取体素到物理尺寸的比例
+            d = np.array([np.abs(lss_filter.GetBoundingBox(i + 1)[-3:] * m) for i in range(num_connected_label)]).mean(-1)
+            if (d > 3).any():
+                sitk.WriteImage(res_list[0], out_fname)
+            else:
+                raw_data.remove(f"{raw_data[0][:-13]}{seg_name}.mhd")
+                remove_list.append({"removed_seg_name": seg_name, "diameter(mm)": str(d)})
     remove_df = pd.DataFrame(remove_list)
     print(remove_df)
     remove_df.to_csv(join(out_folder, "removed_seg.csv"))
